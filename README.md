@@ -9,7 +9,7 @@ See the [install instructions](http://golang.org/doc/install.html).
 
 To install streamdeck, simply run:
 
-    go get github.com/muesli/streamdeck
+    go get github.com/muesli/streamdeck/cmd/...
 
 ## Configuration
 
@@ -25,6 +25,26 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="006c", MODE:="666"
 Make sure your user is part of the `plugdev` group and reload the rules with
 `sudo udevadm control --reload-rules`. Unplug and replug the device and you
 should be good to go.
+
+## Usage
+
+Reset the device:
+
+```
+streamdeck-cli reset
+```
+
+Control the brightness, in percent between 0 and 100:
+
+```
+streamdeck-cli brightness 50
+```
+
+Set an image on the first key (from the top-left):
+
+```
+streamdeck-cli image 0 image.png
+```
 
 ## Development
 
