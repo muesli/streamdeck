@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"image"
 
-	_ "image/jpeg"
-	_ "image/png"
-
 	"github.com/muesli/hid"
 	"golang.org/x/image/draw"
 )
