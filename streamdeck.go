@@ -3,6 +3,7 @@ package streamdeck
 import (
 	"fmt"
 	"image"
+	"image/color"
 
 	"github.com/muesli/hid"
 	"golang.org/x/image/draw"
@@ -103,6 +104,22 @@ func (d Device) Reset() error {
 	_, err := d.device.SendFeatureReport(b)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// Clears the Stream Deck, setting a black image on all buttons
+func (d Device) Clear() error {
+	img := image.NewRGBA(image.Rect(0, 0, int(d.Pixels), int(d.Pixels)))
+	draw.Draw(img, img.Bounds(), image.NewUniform(color.RGBA{0, 0, 0, 255}), image.ZP, draw.Src)
+	fmt.Println(d.Columns)
+	for i := uint8(0); i <= d.Columns*d.Rows; i++ {
+		err := d.SetImage(i, img)
+		if err != nil {
+			fmt.Println(err)
+			return err
+		}
 	}
 
 	return nil
