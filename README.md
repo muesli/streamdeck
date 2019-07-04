@@ -28,12 +28,6 @@ should be good to go.
 
 ## Usage
 
-Reset the device:
-
-```
-streamdeck-cli reset
-```
-
 Control the brightness, in percent between 0 and 100:
 
 ```
@@ -44,6 +38,18 @@ Set an image on the first key (from the top-left):
 
 ```
 streamdeck-cli image 0 image.png
+```
+
+Clear all images:
+
+```
+streamdeck-cli clear
+```
+
+Reset the device:
+
+```
+streamdeck-cli reset
 ```
 
 ## Development
