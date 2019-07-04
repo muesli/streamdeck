@@ -59,7 +59,7 @@ func Devices() ([]Device, error) {
 				Pixels:     72,
 				startPage:  1,
 				pageLength: 2583 * 3,
-				state:      make([]byte, 5*3+1),
+				state:      make([]byte, 5*3+1), // Columns * Rows + 1
 				info:       d,
 			}
 
