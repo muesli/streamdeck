@@ -32,6 +32,8 @@ var (
 			if err != nil {
 				return err
 			}
+			defer f.Close()
+
 			img, _, err := image.Decode(f)
 			if err != nil {
 				return err
