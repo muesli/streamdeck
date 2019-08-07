@@ -5,7 +5,7 @@ import (
 	"image"
 	"image/color"
 
-	"github.com/muesli/hid"
+	"github.com/karalabe/hid"
 	"golang.org/x/image/draw"
 )
 
