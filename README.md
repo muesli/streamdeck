@@ -1,6 +1,10 @@
 # streamdeck
 
-An application and Go library to control your Elgato Stream Deck on Linux
+An CLI application and Go library to control your Elgato Stream Deck on Linux.
+
+If you're looking for a complete Linux service to control your StreamDeck, check
+out [Deckmaster](https://github.com/muesli/deckmaster), which is based on this
+library.
 
 ## Installation
 
