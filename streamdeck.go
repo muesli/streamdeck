@@ -10,9 +10,11 @@ import (
 )
 
 const (
-	VID_ELGATO     = 0x0fd9
-	PID_STREAMDECK = 0x0060
-	// PID_STREAMDECK_MINI = 0x0063
+	VID_ELGATO          = 0x0fd9
+	PID_STREAMDECK      = 0x0060
+	PID_STREAMDECK_V2   = 0x006d
+	PID_STREAMDECK_MINI = 0x0063
+	PID_STREAMDECK_XL   = 0x006c
 )
 
 var (
@@ -58,13 +60,60 @@ func Devices() ([]Device, error) {
 				Rows:       3,
 				Pixels:     72,
 				startPage:  1,
-				pageLength: 2583 * 3,
+				pageLength: 7803,
 				state:      make([]byte, 5*3+1), // Columns * Rows + 1
 				info:       d,
 			}
 
 			dd = append(dd, dev)
 		}
+		if d.VendorID == VID_ELGATO && d.ProductID == PID_STREAMDECK_MINI {
+			dev := Device{
+				ID:         d.Path,
+				Serial:     d.Serial,
+				Columns:    3,
+				Rows:       2,
+				Pixels:     80,
+				startPage:  1,
+				pageLength: 1008,
+				state:      make([]byte, 3*2+1), // Columns * Rows + 1
+				info:       d,
+			}
+
+			dd = append(dd, dev)
+		}
+
+		/*
+			if d.VendorID == VID_ELGATO && d.ProductID == PID_STREAMDECK_V2 {
+				dev := Device{
+					ID:         d.Path,
+					Serial:     d.Serial,
+					Columns:    5,
+					Rows:       3,
+					Pixels:     72,
+					startPage:  1,
+					pageLength: 7803,
+					state:      make([]byte, 5*3+1), // Columns * Rows + 1
+					info:       d,
+				}
+
+				dd = append(dd, dev)
+			}
+			if d.VendorID == VID_ELGATO && d.ProductID == PID_STREAMDECK_XL {
+				dev := Device{
+					ID:        d.Path,
+					Serial:    d.Serial,
+					Columns:   8,
+					Rows:      4,
+					Pixels:    96,
+					startPage: 1,
+					state:     make([]byte, 8*4+1), // Columns * Rows + 1
+					info:      d,
+				}
+
+				dd = append(dd, dev)
+			}
+		*/
 	}
 
 	return dd, nil
@@ -180,7 +229,16 @@ func (d Device) SetImage(index uint8, img image.Image) error {
 			d.Pixels)
 	}
 
-	b := []byte{}
+	b := []byte{
+		0x42, 0x4d, 0xf6, 0x3c, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x36, 0x00, 0x00, 0x00, 0x28, 0x00,
+		0x00, 0x00, 0x48, 0x00, 0x00, 0x00, 0x48, 0x00,
+		0x00, 0x00, 0x01, 0x00, 0x18, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0xc0, 0x3c, 0x00, 0x00, 0xc4, 0x0e,
+		0x00, 0x00, 0xc4, 0x0e, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+
 	for y := 0; y < rgba.Bounds().Dy(); y++ {
 		// flip image horizontally
 		for x := rgba.Bounds().Dx() - 1; x >= 0; x-- {
@@ -191,32 +249,37 @@ func (d Device) SetImage(index uint8, img image.Image) error {
 		}
 	}
 
-	header1 := []byte{
-		0x02, 0x01, d.startPage, 0x00, 0x00, d.translateKeyIndex(index) + 1, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-		0x42, 0x4d, 0xf6, 0x3c, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x36, 0x00, 0x00, 0x00, 0x28, 0x00,
-		0x00, 0x00, 0x48, 0x00, 0x00, 0x00, 0x48, 0x00,
-		0x00, 0x00, 0x01, 0x00, 0x18, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0xc0, 0x3c, 0x00, 0x00, 0xc4, 0x0e,
-		0x00, 0x00, 0xc4, 0x0e, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	}
-	header2 := []byte{
-		0x02, 0x01, d.startPage + 1, 0x00, 0x01, d.translateKeyIndex(index) + 1, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	}
+	var page uint8
+	rem := uint(len(b))
 
-	payload1 := append(header1, b[:d.pageLength]...)
-	payload2 := append(header2, b[d.pageLength:]...)
+	var key uint8
+	for rem > 0 {
+		sent := uint(page) * d.pageLength
 
-	_, err := d.device.Write(payload1)
-	if err != nil {
-		return err
-	}
-	_, err = d.device.Write(payload2)
-	if err != nil {
-		return err
+		// this reports length
+		l := rem
+		if l > d.pageLength {
+			l = d.pageLength
+		}
+
+		// last page?
+		if l == rem {
+			key = 1
+		}
+
+		payload := []byte{
+			0x02, 0x01, page + d.startPage, 0x00, key, d.translateKeyIndex(index) + 1, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		}
+		payload = append(payload, b[sent:sent+l]...)
+
+		_, err := d.device.Write(payload)
+		if err != nil {
+			return err
+		}
+
+		rem = rem - l
+		page++
 	}
 
 	return nil
