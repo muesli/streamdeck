@@ -32,9 +32,10 @@ type Device struct {
 	Rows    uint8
 	Pixels  uint
 
-	startPage  uint8
-	pageLength uint
-	state      []byte
+	startPage   uint8
+	pageLength  uint
+	state       []byte
+	stateOffset int
 
 	device *hid.Device
 	info   hid.DeviceInfo
@@ -54,30 +55,32 @@ func Devices() ([]Device, error) {
 	for _, d := range devs {
 		if d.VendorID == VID_ELGATO && d.ProductID == PID_STREAMDECK {
 			dev := Device{
-				ID:         d.Path,
-				Serial:     d.Serial,
-				Columns:    5,
-				Rows:       3,
-				Pixels:     72,
-				startPage:  1,
-				pageLength: 7803,
-				state:      make([]byte, 5*3+1), // Columns * Rows + 1
-				info:       d,
+				ID:          d.Path,
+				Serial:      d.Serial,
+				Columns:     5,
+				Rows:        3,
+				Pixels:      72,
+				startPage:   1,
+				pageLength:  7803,
+				state:       make([]byte, 5*3+1), // Columns * Rows + 1
+				stateOffset: 1,
+				info:        d,
 			}
 
 			dd = append(dd, dev)
 		}
 		if d.VendorID == VID_ELGATO && d.ProductID == PID_STREAMDECK_MINI {
 			dev := Device{
-				ID:         d.Path,
-				Serial:     d.Serial,
-				Columns:    3,
-				Rows:       2,
-				Pixels:     80,
-				startPage:  1,
-				pageLength: 1008,
-				state:      make([]byte, 3*2+1), // Columns * Rows + 1
-				info:       d,
+				ID:          d.Path,
+				Serial:      d.Serial,
+				Columns:     3,
+				Rows:        2,
+				Pixels:      80,
+				startPage:   1,
+				pageLength:  1008,
+				state:       make([]byte, 3*2+1), // Columns * Rows + 1
+				stateOffset: 1,
+				info:        d,
 			}
 
 			dd = append(dd, dev)
@@ -99,21 +102,23 @@ func Devices() ([]Device, error) {
 
 				dd = append(dd, dev)
 			}
-			if d.VendorID == VID_ELGATO && d.ProductID == PID_STREAMDECK_XL {
-				dev := Device{
-					ID:        d.Path,
-					Serial:    d.Serial,
-					Columns:   8,
-					Rows:      4,
-					Pixels:    96,
-					startPage: 1,
-					state:     make([]byte, 8*4+1), // Columns * Rows + 1
-					info:      d,
-				}
-
-				dd = append(dd, dev)
-			}
 		*/
+
+		if d.VendorID == VID_ELGATO && d.ProductID == PID_STREAMDECK_XL {
+			dev := Device{
+				ID:          d.Path,
+				Serial:      d.Serial,
+				Columns:     8,
+				Rows:        4,
+				Pixels:      96,
+				startPage:   1,
+				state:       make([]byte, 4+8*4), // 4 + Columns * Rows
+				stateOffset: 4,
+				info:        d,
+			}
+
+			dd = append(dd, dev)
+		}
 	}
 
 	return dd, nil
@@ -176,7 +181,7 @@ func (d Device) Clear() error {
 // ReadKeys returns a channel, which it will use to emit key presses/releases
 func (d Device) ReadKeys() (chan Key, error) {
 	kch := make(chan Key)
-	b := make([]byte, d.Columns*d.Rows+1)
+	b := make([]byte, len(d.state))
 	go func() {
 		for {
 			copy(d.state, b)
@@ -186,10 +191,10 @@ func (d Device) ReadKeys() (chan Key, error) {
 				return
 			}
 
-			for i := uint8(1); i <= d.Columns*d.Rows; i++ {
+			for i := d.stateOffset; i < len(b); i++ {
 				if b[i] != d.state[i] {
 					kch <- Key{
-						Index:   d.translateKeyIndex(i - 1),
+						Index:   d.translateKeyIndex(uint8(i - d.stateOffset)),
 						Pressed: b[i] == 1,
 					}
 				}
