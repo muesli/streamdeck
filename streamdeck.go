@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"log"
 
 	"github.com/karalabe/hid"
 	"golang.org/x/image/draw"
@@ -32,13 +33,15 @@ type Device struct {
 	Rows    uint8
 	Pixels  uint
 
-	startPage   uint8
-	pageLength  uint
-	state       []byte
-	stateOffset int
+	startPage  uint8
+	pageLength uint
+	state      []byte
 
 	device *hid.Device
 	info   hid.DeviceInfo
+
+	newHardware func(device *hid.Device, keyCount uint8) hardware
+	hardware    hardware
 }
 
 // Key holds the current status of a key on the device
@@ -62,9 +65,9 @@ func Devices() ([]Device, error) {
 				Pixels:      72,
 				startPage:   1,
 				pageLength:  7803,
-				state:       make([]byte, 5*3+1), // Columns * Rows + 1
-				stateOffset: 1,
+				state:       make([]byte, 5*3), // Columns * Rows
 				info:        d,
+				newHardware: newClassicHardware,
 			}
 
 			dd = append(dd, dev)
@@ -78,9 +81,9 @@ func Devices() ([]Device, error) {
 				Pixels:      80,
 				startPage:   1,
 				pageLength:  1008,
-				state:       make([]byte, 3*2+1), // Columns * Rows + 1
-				stateOffset: 1,
+				state:       make([]byte, 3*2), // Columns * Rows
 				info:        d,
+				newHardware: newClassicHardware,
 			}
 
 			dd = append(dd, dev)
@@ -98,6 +101,7 @@ func Devices() ([]Device, error) {
 					pageLength: 7803,
 					state:      make([]byte, 5*3+1), // Columns * Rows + 1
 					info:       d,
+					newHardware: newXLHardware,
 				}
 
 				dd = append(dd, dev)
@@ -112,9 +116,9 @@ func Devices() ([]Device, error) {
 				Rows:        4,
 				Pixels:      96,
 				startPage:   1,
-				state:       make([]byte, 4+8*4), // 4 + Columns * Rows
-				stateOffset: 4,
+				state:       make([]byte, 8*4), // Columns * Rows
 				info:        d,
+				newHardware: newXLHardware,
 			}
 
 			dd = append(dd, dev)
@@ -129,7 +133,11 @@ func Devices() ([]Device, error) {
 func (d *Device) Open() error {
 	var err error
 	d.device, err = d.info.Open()
-	return err
+	if err != nil {
+		return err
+	}
+	d.hardware = d.newHardware(d.device, d.Rows*d.Columns)
+	return nil
 }
 
 // Close the connection with the device
@@ -139,28 +147,12 @@ func (d Device) Close() error {
 
 // FirmwareVersion returns the firmware version of the device
 func (d Device) FirmwareVersion() (string, error) {
-	b := make([]byte, 17)
-	copy(b, c_ELGATO_FIRMWARE)
-
-	_, err := d.device.GetFeatureReport(b)
-	if err != nil {
-		return "", err
-	}
-
-	return string(b[5:]), nil
+	return d.hardware.FirmwareVersion()
 }
 
 // Resets the Stream Deck, clears all button images and shows the standby image
 func (d Device) Reset() error {
-	b := make([]byte, 17)
-	copy(b, c_ELGATO_RESET)
-
-	_, err := d.device.SendFeatureReport(b)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return d.hardware.Reset()
 }
 
 // Clears the Stream Deck, setting a black image on all buttons
@@ -185,16 +177,18 @@ func (d Device) ReadKeys() (chan Key, error) {
 	go func() {
 		for {
 			copy(d.state, b)
-			_, err := d.device.Read(b)
+
+			err := d.hardware.ReadKeyState(b)
+			log.Printf("device input %+v\n%v", b, err)
 			if err != nil {
 				close(kch)
 				return
 			}
 
-			for i := d.stateOffset; i < len(b); i++ {
+			for i := 0; i < len(b); i++ {
 				if b[i] != d.state[i] {
 					kch <- Key{
-						Index:   d.translateKeyIndex(uint8(i - d.stateOffset)),
+						Index:   d.translateKeyIndex(uint8(i)),
 						Pressed: b[i] == 1,
 					}
 				}
@@ -207,20 +201,7 @@ func (d Device) ReadKeys() (chan Key, error) {
 
 // SetBrightness sets the background lighting brightness from 0 to 100 percent
 func (d Device) SetBrightness(percent uint8) error {
-	b := make([]byte, 17)
-	copy(b, c_ELGATO_BRIGHTNESS)
-
-	if percent > 100 {
-		percent = 100
-	}
-	b[len(c_ELGATO_BRIGHTNESS)] = percent
-
-	_, err := d.device.SendFeatureReport(b)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return d.hardware.SetBrightness(percent)
 }
 
 // SetImage sets the image of a button on the Stream Deck. The provided image
