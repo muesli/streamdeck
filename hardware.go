@@ -211,11 +211,11 @@ func (h *xlHardware) GetImageData(img image.Image) (*imageData, error) {
 	flipped := image.NewRGBA(img.Bounds())
 	draw.Copy(flipped, image.ZP, img, img.Bounds(), draw.Src, nil)
 	for y := 0; y < flipped.Bounds().Dy()/2; y++ {
+		yy := flipped.Bounds().Max.Y - y - 1
 		for x := 0; x < flipped.Bounds().Dx(); x++ {
-			c := flipped.RGBAAt(x, y)
+			xx := flipped.Bounds().Max.X - x - 1
 
-			xx := flipped.Bounds().Max.X - x
-			yy := flipped.Bounds().Max.Y - y
+			c := flipped.RGBAAt(x, y)
 			flipped.SetRGBA(x, y, flipped.RGBAAt(xx, yy))
 			flipped.SetRGBA(xx, yy, c)
 		}
