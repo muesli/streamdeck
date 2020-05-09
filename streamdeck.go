@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"log"
 
 	"github.com/karalabe/hid"
 	"golang.org/x/image/draw"
@@ -18,12 +17,6 @@ const (
 	PID_STREAMDECK_XL   = 0x006c
 )
 
-var (
-	c_ELGATO_FIRMWARE   = []byte{0x04}
-	c_ELGATO_RESET      = []byte{0x0b, 0x63}
-	c_ELGATO_BRIGHTNESS = []byte{0x05, 0x55, 0xaa, 0xd1, 0x01}
-)
-
 // Device represents a single Stream Deck device
 type Device struct {
 	ID     string
@@ -33,14 +26,12 @@ type Device struct {
 	Rows    uint8
 	Pixels  uint
 
-	startPage  uint8
-	pageLength uint
-	state      []byte
+	state []byte
 
 	device *hid.Device
 	info   hid.DeviceInfo
 
-	newHardware func(device *hid.Device, keyCount uint8) hardware
+	newHardware func(device *hid.Device) hardware
 	hardware    hardware
 }
 
@@ -63,8 +54,6 @@ func Devices() ([]Device, error) {
 				Columns:     5,
 				Rows:        3,
 				Pixels:      72,
-				startPage:   1,
-				pageLength:  7803,
 				state:       make([]byte, 5*3), // Columns * Rows
 				info:        d,
 				newHardware: newClassicHardware,
@@ -79,11 +68,9 @@ func Devices() ([]Device, error) {
 				Columns:     3,
 				Rows:        2,
 				Pixels:      80,
-				startPage:   1,
-				pageLength:  1008,
 				state:       make([]byte, 3*2), // Columns * Rows
 				info:        d,
-				newHardware: newClassicHardware,
+				newHardware: newMiniHardware,
 			}
 
 			dd = append(dd, dev)
@@ -97,9 +84,7 @@ func Devices() ([]Device, error) {
 					Columns:    5,
 					Rows:       3,
 					Pixels:     72,
-					startPage:  1,
-					pageLength: 7803,
-					state:      make([]byte, 5*3+1), // Columns * Rows + 1
+					state:      make([]byte, 5*3), // Columns * Rows
 					info:       d,
 					newHardware: newXLHardware,
 				}
@@ -115,7 +100,6 @@ func Devices() ([]Device, error) {
 				Columns:     8,
 				Rows:        4,
 				Pixels:      96,
-				startPage:   1,
 				state:       make([]byte, 8*4), // Columns * Rows
 				info:        d,
 				newHardware: newXLHardware,
@@ -136,7 +120,7 @@ func (d *Device) Open() error {
 	if err != nil {
 		return err
 	}
-	d.hardware = d.newHardware(d.device, d.Rows*d.Columns)
+	d.hardware = d.newHardware(d.device)
 	return nil
 }
 
@@ -179,7 +163,6 @@ func (d Device) ReadKeys() (chan Key, error) {
 			copy(d.state, b)
 
 			err := d.hardware.ReadKeyState(b)
-			log.Printf("device input %+v\n%v", b, err)
 			if err != nil {
 				close(kch)
 				return
@@ -201,6 +184,9 @@ func (d Device) ReadKeys() (chan Key, error) {
 
 // SetBrightness sets the background lighting brightness from 0 to 100 percent
 func (d Device) SetBrightness(percent uint8) error {
+	if percent > 100 {
+		percent = 100
+	}
 	return d.hardware.SetBrightness(percent)
 }
 
@@ -208,63 +194,33 @@ func (d Device) SetBrightness(percent uint8) error {
 // needs to be in the correct resolution for the device. The index starts with
 // 0 being the top-left button.
 func (d Device) SetImage(index uint8, img image.Image) error {
-	rgba := toRGBA(img)
-	if rgba.Bounds().Dy() != int(d.Pixels) ||
-		rgba.Bounds().Dx() != int(d.Pixels) {
-		return fmt.Errorf("supplied image has wrong dimensions, expected %[1]dx%[1]d pixels",
-			d.Pixels)
+	if img.Bounds().Dy() != int(d.Pixels) ||
+		img.Bounds().Dx() != int(d.Pixels) {
+		return fmt.Errorf("supplied image has wrong dimensions, expected %[1]dx%[1]d pixels", d.Pixels)
 	}
 
-	b := []byte{
-		0x42, 0x4d, 0xf6, 0x3c, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x36, 0x00, 0x00, 0x00, 0x28, 0x00,
-		0x00, 0x00, 0x48, 0x00, 0x00, 0x00, 0x48, 0x00,
-		0x00, 0x00, 0x01, 0x00, 0x18, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0xc0, 0x3c, 0x00, 0x00, 0xc4, 0x0e,
-		0x00, 0x00, 0xc4, 0x0e, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	imageData, err := d.hardware.GetImageData(img)
+	if err != nil {
+		return fmt.Errorf("cannot get image data: %v", err)
 	}
 
-	for y := 0; y < rgba.Bounds().Dy(); y++ {
-		// flip image horizontally
-		for x := rgba.Bounds().Dx() - 1; x >= 0; x-- {
-			c := rgba.RGBAAt(x, y)
-			b = append(b, c.B)
-			b = append(b, c.G)
-			b = append(b, c.R)
-		}
-	}
+	data := make([]byte, d.hardware.ImagePageSize())
 
-	var page uint8
-	rem := uint(len(b))
+	var page int
+	var lastPage bool
+	for !lastPage {
+		var payload []byte
+		payload, lastPage = imageData.Page(page)
+		header := d.hardware.GetImagePageHeader(page, d.translateKeyIndex(index), len(payload), lastPage)
 
-	var key uint8
-	for rem > 0 {
-		sent := uint(page) * d.pageLength
+		copy(data, header)
+		copy(data[len(header):], payload)
 
-		// this reports length
-		l := rem
-		if l > d.pageLength {
-			l = d.pageLength
-		}
-
-		// last page?
-		if l == rem {
-			key = 1
-		}
-
-		payload := []byte{
-			0x02, 0x01, page + d.startPage, 0x00, key, d.translateKeyIndex(index) + 1, 0x00, 0x00,
-			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-		}
-		payload = append(payload, b[sent:sent+l]...)
-
-		_, err := d.device.Write(payload)
+		_, err := d.device.Write(data)
 		if err != nil {
-			return err
+			return fmt.Errorf("cannot write image page %d of %d (%d image bytes) %d bytes: %v", page, imageData.PageCount(), imageData.Length(), len(data), err)
 		}
 
-		rem = rem - l
 		page++
 	}
 
