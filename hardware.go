@@ -6,6 +6,7 @@ import (
 	"image/jpeg"
 
 	"github.com/karalabe/hid"
+	"golang.org/x/image/draw"
 )
 
 // hardware encapsulates the different protocols and behavior of the different hardware variants.
@@ -206,8 +207,22 @@ func (h *xlHardware) ReadKeyState(state []byte) error {
 }
 
 func (h *xlHardware) GetImageData(img image.Image) (*imageData, error) {
+	// flip image horizontally and vertically
+	flipped := image.NewRGBA(img.Bounds())
+	draw.Copy(flipped, image.ZP, img, img.Bounds(), draw.Src, nil)
+	for y := 0; y < flipped.Bounds().Dy()/2; y++ {
+		for x := 0; x < flipped.Bounds().Dx(); x++ {
+			c := flipped.RGBAAt(x, y)
+
+			xx := flipped.Bounds().Max.X - x
+			yy := flipped.Bounds().Max.Y - y
+			flipped.SetRGBA(x, y, flipped.RGBAAt(xx, yy))
+			flipped.SetRGBA(xx, yy, c)
+		}
+	}
+
 	buffer := bytes.NewBuffer([]byte{})
-	err := jpeg.Encode(buffer, img, nil)
+	err := jpeg.Encode(buffer, flipped, nil)
 	if err != nil {
 		return nil, err
 	}
