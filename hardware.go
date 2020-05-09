@@ -8,16 +8,18 @@ import (
 	"github.com/karalabe/hid"
 )
 
+// hardware encapsulates the different protocols and behavior of the different hardware variants.
 type hardware interface {
 	FirmwareVersion() (string, error)
 	Reset() error
 	SetBrightness(percent uint8) error
 	ReadKeyState(state []byte) error
-	GetImageData(img image.Image) (*ImageData, error)
+	GetImageData(img image.Image) (*imageData, error)
 	GetImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastPage bool) []byte
 	ImagePageSize() int
 }
 
+// setup and data used by the different hardware variants.
 type setup struct {
 	device              *hid.Device
 	keyBuffer           []byte
@@ -26,6 +28,7 @@ type setup struct {
 	imagePageHeaderSize int
 }
 
+// getFeatureReport from the device without worries about the correct payload size.
 func (s setup) getFeatureReport(payload ...byte) ([]byte, error) {
 	b := make([]byte, s.featureReportSize)
 	copy(b, payload)
@@ -36,6 +39,7 @@ func (s setup) getFeatureReport(payload ...byte) ([]byte, error) {
 	return b, nil
 }
 
+// sendFeatureReport to the device without worries about the correct payload size.
 func (s setup) sendFeatureReport(payload ...byte) error {
 	b := make([]byte, s.featureReportSize)
 	copy(b, payload)
@@ -47,10 +51,12 @@ func (s setup) sendFeatureReport(payload ...byte) error {
 	Stream Deck, Stream Deck Mini
 */
 
+// classicHardware implements the protocol and behavior used by the original Stream Deck and the Stream Deck Mini.
 type classicHardware struct {
 	setup
 }
 
+// newClassicHardware creates the hardware instance for use with an original Stream Deck.
 func newClassicHardware(device *hid.Device) hardware {
 	return &classicHardware{
 		setup: setup{
@@ -63,6 +69,7 @@ func newClassicHardware(device *hid.Device) hardware {
 	}
 }
 
+// newMiniHardware create the hardware instance for use with a Stream Deck Mini.
 func newMiniHardware(device *hid.Device) hardware {
 	return &classicHardware{
 		setup: setup{
@@ -100,9 +107,11 @@ func (h *classicHardware) ReadKeyState(state []byte) error {
 	return nil
 }
 
-func (h *classicHardware) GetImageData(img image.Image) (*ImageData, error) {
+func (h *classicHardware) GetImageData(img image.Image) (*imageData, error) {
 	rgba := toRGBA(img)
 
+	// this is a BMP file header followed by a BPM bitmap info header
+	// find more information here: https://en.wikipedia.org/wiki/BMP_file_format
 	header := []byte{
 		0x42, 0x4d, 0xf6, 0x3c, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x36, 0x00, 0x00, 0x00, 0x28, 0x00,
@@ -127,7 +136,7 @@ func (h *classicHardware) GetImageData(img image.Image) (*ImageData, error) {
 			i += 3
 		}
 	}
-	return &ImageData{
+	return &imageData{
 		image:    buffer,
 		pageSize: h.imagePageSize - h.imagePageHeaderSize,
 	}, nil
@@ -154,10 +163,12 @@ func (h *classicHardware) ImagePageSize() int {
 	Stream Deck XL
 */
 
+// xlHardware implements the protocol and behavior of the Stream Deck XL.
 type xlHardware struct {
 	setup
 }
 
+// newXLHardware creates the hardware instance for use with a Stream Deck XL.
 func newXLHardware(device *hid.Device) hardware {
 	return &xlHardware{
 		setup: setup{
@@ -194,13 +205,13 @@ func (h *xlHardware) ReadKeyState(state []byte) error {
 	return nil
 }
 
-func (h *xlHardware) GetImageData(img image.Image) (*ImageData, error) {
+func (h *xlHardware) GetImageData(img image.Image) (*imageData, error) {
 	buffer := bytes.NewBuffer([]byte{})
 	err := jpeg.Encode(buffer, img, nil)
 	if err != nil {
 		return nil, err
 	}
-	return &ImageData{
+	return &imageData{
 		image:    buffer.Bytes(),
 		pageSize: h.imagePageSize - h.imagePageHeaderSize,
 	}, nil
@@ -226,12 +237,14 @@ func (h *xlHardware) ImagePageSize() int {
 	Image Data
 */
 
-type ImageData struct {
+// imageData allows to access raw image data in a byte array through pages of a given size.
+type imageData struct {
 	image    []byte
 	pageSize int
 }
 
-func (d ImageData) Page(pageIndex int) ([]byte, bool) {
+// Page returns the page with the given index and an indication if this is the last page.
+func (d imageData) Page(pageIndex int) ([]byte, bool) {
 	offset := pageIndex * d.pageSize
 	if offset >= len(d.image) {
 		return []byte{}, true
@@ -245,7 +258,7 @@ func (d ImageData) Page(pageIndex int) ([]byte, bool) {
 	return d.image[offset : offset+length], pageIndex == d.PageCount()-1
 }
 
-func (d ImageData) pageLength(pageIndex int) int {
+func (d imageData) pageLength(pageIndex int) int {
 	remaining := len(d.image) - (pageIndex * d.pageSize)
 	if remaining > d.pageSize {
 		return d.pageSize
@@ -256,7 +269,8 @@ func (d ImageData) pageLength(pageIndex int) int {
 	return 0
 }
 
-func (d ImageData) PageCount() int {
+// PageCount returns the total number of pages.
+func (d imageData) PageCount() int {
 	count := len(d.image) / d.pageSize
 	if len(d.image)%d.pageSize != 0 {
 		return count + 1
@@ -264,6 +278,7 @@ func (d ImageData) PageCount() int {
 	return count
 }
 
-func (d ImageData) Length() int {
+// Length of the raw image data in bytes.
+func (d imageData) Length() int {
 	return len(d.image)
 }
