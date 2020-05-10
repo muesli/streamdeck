@@ -108,17 +108,23 @@ func Devices() ([]Device, error) {
 				setBrightnessCommand: c_DEFAULT_BRIGHTNESS,
 			}
 		case d.VendorID == VID_ELGATO && d.ProductID == PID_STREAMDECK_V2:
-			/*
-					dev = Device{
-						ID:         d.Path,
-						Serial:     d.Serial,
-						Columns:    5,
-						Rows:       3,
-						Pixels:     72,
-						state:      make([]byte, 5*3), // Columns * Rows
-					}
-				}
-			*/
+			dev = Device{
+				ID:                   d.Path,
+				Serial:               d.Serial,
+				Columns:              5,
+				Rows:                 3,
+				Pixels:               72,
+				featureReportSize:    32,
+				firmwareOffset:       6,
+				keyStateOffset:       4,
+				imagePageSize:        1024,
+				imagePageHeaderSize:  8,
+				imagePageHeader:      xlImagePageHeader,
+				toImageFormat:        toJPEG,
+				getFirmwareCommand:   c_XL_FIRMWARE,
+				resetCommand:         c_XL_RESET,
+				setBrightnessCommand: c_XL_BRIGHTNESS,
+			}
 		case d.VendorID == VID_ELGATO && d.ProductID == PID_STREAMDECK_XL:
 			dev = Device{
 				ID:                   d.Path,
