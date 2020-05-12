@@ -41,6 +41,7 @@ type Device struct {
 	featureReportSize   int
 	firmwareOffset      int
 	keyStateOffset      int
+	translateKeyIndex   func(index, columns uint8) uint8
 	imagePageSize       int
 	imagePageHeaderSize int
 	toImageFormat       func(image.Image) ([]byte, error)
@@ -81,6 +82,7 @@ func Devices() ([]Device, error) {
 				featureReportSize:    17,
 				firmwareOffset:       5,
 				keyStateOffset:       1,
+				translateKeyIndex:    translateRightToLeft,
 				imagePageSize:        8192,
 				imagePageHeaderSize:  16,
 				imagePageHeader:      defaultImagePageHeader,
@@ -99,6 +101,7 @@ func Devices() ([]Device, error) {
 				featureReportSize:    17,
 				firmwareOffset:       5,
 				keyStateOffset:       1,
+				translateKeyIndex:    translateRightToLeft,
 				imagePageSize:        1024,
 				imagePageHeaderSize:  16,
 				imagePageHeader:      defaultImagePageHeader,
@@ -117,6 +120,7 @@ func Devices() ([]Device, error) {
 				featureReportSize:    32,
 				firmwareOffset:       6,
 				keyStateOffset:       4,
+				translateKeyIndex:    identity,
 				imagePageSize:        1024,
 				imagePageHeaderSize:  8,
 				imagePageHeader:      xlImagePageHeader,
@@ -135,6 +139,7 @@ func Devices() ([]Device, error) {
 				featureReportSize:    32,
 				firmwareOffset:       6,
 				keyStateOffset:       4,
+				translateKeyIndex:    identity,
 				imagePageSize:        1024,
 				imagePageHeaderSize:  8,
 				imagePageHeader:      xlImagePageHeader,
@@ -219,7 +224,7 @@ func (d Device) ReadKeys() (chan Key, error) {
 				keyIndex := uint8(i - d.keyStateOffset)
 				if keyBuffer[i] != d.keyState[keyIndex] {
 					kch <- Key{
-						Index:   d.translateKeyIndex(keyIndex),
+						Index:   d.translateKeyIndex(keyIndex, d.Columns),
 						Pressed: keyBuffer[i] == 1,
 					}
 				}
@@ -268,7 +273,7 @@ func (d Device) SetImage(index uint8, img image.Image) error {
 	for !lastPage {
 		var payload []byte
 		payload, lastPage = imageData.Page(page)
-		header := d.imagePageHeader(page, d.translateKeyIndex(index), len(payload), lastPage)
+		header := d.imagePageHeader(page, d.translateKeyIndex(index, d.Columns), len(payload), lastPage)
 
 		copy(data, header)
 		copy(data[len(header):], payload)
@@ -282,11 +287,6 @@ func (d Device) SetImage(index uint8, img image.Image) error {
 	}
 
 	return nil
-}
-
-func (d Device) translateKeyIndex(index uint8) uint8 {
-	keyCol := index % d.Columns
-	return (index - keyCol) + (d.Columns - 1) - keyCol
 }
 
 // getFeatureReport from the device without worries about the correct payload size.
@@ -306,6 +306,17 @@ func (d Device) sendFeatureReport(payload []byte) error {
 	copy(b, payload)
 	_, err := d.device.SendFeatureReport(b)
 	return err
+}
+
+// translateRightToLeft translates the given key index from right-to-left to left-to-right, based on the given number of columns.
+func translateRightToLeft(index, columns uint8) uint8 {
+	keyCol := index % columns
+	return (index - keyCol) + (columns - 1) - keyCol
+}
+
+// identity returns the given key index as it is.
+func identity(index, _ uint8) uint8 {
+	return index
 }
 
 // toRGBA converts an image.Image to an image.RGBA
