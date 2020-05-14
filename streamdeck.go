@@ -83,7 +83,7 @@ func Devices() ([]Device, error) {
 				firmwareOffset:       5,
 				keyStateOffset:       1,
 				translateKeyIndex:    translateRightToLeft,
-				imagePageSize:        8192,
+				imagePageSize:        7819,
 				imagePageHeaderSize:  16,
 				imagePageHeader:      defaultImagePageHeader,
 				toImageFormat:        toBMP,
@@ -166,10 +166,7 @@ func Devices() ([]Device, error) {
 func (d *Device) Open() error {
 	var err error
 	d.device, err = d.info.Open()
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // Close the connection with the device
@@ -391,7 +388,7 @@ func toJPEG(img image.Image) ([]byte, error) {
 func defaultImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastPage bool) []byte {
 	var lastPageByte byte
 	if lastPage {
-		lastPageByte = 0
+		lastPageByte = 1
 	}
 	return []byte{
 		0x02, 0x01,
