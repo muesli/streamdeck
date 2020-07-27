@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/muesli/streamdeck"
+	"github.com/unix-streamdeck/streamdeck"
 	"github.com/spf13/cobra"
 )
 
