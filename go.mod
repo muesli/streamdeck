@@ -1,4 +1,4 @@
-module github.com/unix-streamdeck/streamdeck
+module github.com/unix-streamdeck/driver
 
 go 1.14
 
