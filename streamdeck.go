@@ -37,6 +37,7 @@ type Device struct {
 	Columns uint8
 	Rows    uint8
 	Pixels  uint
+	Padding uint
 
 	featureReportSize   int
 	firmwareOffset      int
@@ -79,6 +80,7 @@ func Devices() ([]Device, error) {
 				Columns:              5,
 				Rows:                 3,
 				Pixels:               72,
+				Padding:              16,
 				featureReportSize:    17,
 				firmwareOffset:       5,
 				keyStateOffset:       1,
@@ -98,6 +100,7 @@ func Devices() ([]Device, error) {
 				Columns:              3,
 				Rows:                 2,
 				Pixels:               80,
+				Padding:              16,
 				featureReportSize:    17,
 				firmwareOffset:       5,
 				keyStateOffset:       1,
@@ -117,6 +120,7 @@ func Devices() ([]Device, error) {
 				Columns:              5,
 				Rows:                 3,
 				Pixels:               72,
+				Padding:              16,
 				featureReportSize:    32,
 				firmwareOffset:       6,
 				keyStateOffset:       4,
@@ -136,6 +140,7 @@ func Devices() ([]Device, error) {
 				Columns:              8,
 				Rows:                 4,
 				Pixels:               96,
+				Padding:              16,
 				featureReportSize:    32,
 				firmwareOffset:       6,
 				keyStateOffset:       4,
