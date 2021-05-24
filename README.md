@@ -13,12 +13,12 @@ library.
 
 ## Installation
 
-Make sure you have a working Go environment (Go 1.9 or higher is required).
+Make sure you have a working Go environment (Go 1.11 or higher is required).
 See the [install instructions](http://golang.org/doc/install.html).
 
 To install streamdeck, simply run:
 
-    go get github.com/muesli/streamdeck/cmd/...
+    go get github.com/muesli/streamdeck
 
 ## Configuration
 
@@ -29,6 +29,7 @@ regular user. Edit `/etc/udev/rules.d/99-streamdeck.rules` and add these lines:
 SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="0060", MODE:="666", GROUP="plugdev"
 SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="0063", MODE:="666", GROUP="plugdev"
 SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="006c", MODE:="666", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="006d", MODE:="666", GROUP="plugdev"
 ```
 
 Make sure your user is part of the `plugdev` group and reload the rules with
