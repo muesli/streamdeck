@@ -20,22 +20,23 @@ const (
 )
 
 var (
-	c_DEFAULT_FIRMWARE   = []byte{0x04}
-	c_DEFAULT_RESET      = []byte{0x0b, 0x63}
-	c_DEFAULT_BRIGHTNESS = []byte{0x05, 0x55, 0xaa, 0xd1, 0x01}
+	c_REV1_FIRMWARE   = []byte{0x04}
+	c_REV1_RESET      = []byte{0x0b, 0x63}
+	c_REV1_BRIGHTNESS = []byte{0x05, 0x55, 0xaa, 0xd1, 0x01}
 
-	c_XL_FIRMWARE   = []byte{0x05}
-	c_XL_RESET      = []byte{0x03, 0x02}
-	c_XL_BRIGHTNESS = []byte{0x03, 0x08}
+	c_REV2_FIRMWARE   = []byte{0x05}
+	c_REV2_RESET      = []byte{0x03, 0x02}
+	c_REV2_BRIGHTNESS = []byte{0x03, 0x08}
 )
 
-// Device represents a single Stream Deck device
+// Device represents a single Stream Deck device.
 type Device struct {
 	ID     string
 	Serial string
 
 	Columns uint8
 	Rows    uint8
+	Keys    uint8
 	Pixels  uint
 	DPI     uint
 	Padding uint
@@ -59,13 +60,13 @@ type Device struct {
 	info   hid.DeviceInfo
 }
 
-// Key holds the current status of a key on the device
+// Key holds the current status of a key on the device.
 type Key struct {
 	Index   uint8
 	Pressed bool
 }
 
-// Devices returns all attached Stream Decks
+// Devices returns all attached Stream Decks.
 func Devices() ([]Device, error) {
 	dd := []Device{}
 
@@ -80,6 +81,7 @@ func Devices() ([]Device, error) {
 				Serial:               d.Serial,
 				Columns:              5,
 				Rows:                 3,
+				Keys:                 15,
 				Pixels:               72,
 				DPI:                  124,
 				Padding:              16,
@@ -89,11 +91,11 @@ func Devices() ([]Device, error) {
 				translateKeyIndex:    translateRightToLeft,
 				imagePageSize:        7819,
 				imagePageHeaderSize:  16,
-				imagePageHeader:      defaultImagePageHeader,
+				imagePageHeader:      rev1ImagePageHeader,
 				toImageFormat:        toBMP,
-				getFirmwareCommand:   c_DEFAULT_FIRMWARE,
-				resetCommand:         c_DEFAULT_RESET,
-				setBrightnessCommand: c_DEFAULT_BRIGHTNESS,
+				getFirmwareCommand:   c_REV1_FIRMWARE,
+				resetCommand:         c_REV1_RESET,
+				setBrightnessCommand: c_REV1_BRIGHTNESS,
 			}
 		case d.VendorID == VID_ELGATO && d.ProductID == PID_STREAMDECK_MINI:
 			dev = Device{
@@ -101,6 +103,7 @@ func Devices() ([]Device, error) {
 				Serial:               d.Serial,
 				Columns:              3,
 				Rows:                 2,
+				Keys:                 6,
 				Pixels:               80,
 				DPI:                  138,
 				Padding:              16,
@@ -110,11 +113,11 @@ func Devices() ([]Device, error) {
 				translateKeyIndex:    translateRightToLeft,
 				imagePageSize:        1024,
 				imagePageHeaderSize:  16,
-				imagePageHeader:      defaultImagePageHeader,
+				imagePageHeader:      rev1ImagePageHeader,
 				toImageFormat:        toBMP,
-				getFirmwareCommand:   c_DEFAULT_FIRMWARE,
-				resetCommand:         c_DEFAULT_RESET,
-				setBrightnessCommand: c_DEFAULT_BRIGHTNESS,
+				getFirmwareCommand:   c_REV1_FIRMWARE,
+				resetCommand:         c_REV1_RESET,
+				setBrightnessCommand: c_REV1_BRIGHTNESS,
 			}
 		case d.VendorID == VID_ELGATO && d.ProductID == PID_STREAMDECK_V2:
 			dev = Device{
@@ -122,6 +125,7 @@ func Devices() ([]Device, error) {
 				Serial:               d.Serial,
 				Columns:              5,
 				Rows:                 3,
+				Keys:                 15,
 				Pixels:               72,
 				DPI:                  124,
 				Padding:              16,
@@ -131,11 +135,11 @@ func Devices() ([]Device, error) {
 				translateKeyIndex:    identity,
 				imagePageSize:        1024,
 				imagePageHeaderSize:  8,
-				imagePageHeader:      xlImagePageHeader,
+				imagePageHeader:      rev2ImagePageHeader,
 				toImageFormat:        toJPEG,
-				getFirmwareCommand:   c_XL_FIRMWARE,
-				resetCommand:         c_XL_RESET,
-				setBrightnessCommand: c_XL_BRIGHTNESS,
+				getFirmwareCommand:   c_REV2_FIRMWARE,
+				resetCommand:         c_REV2_RESET,
+				setBrightnessCommand: c_REV2_BRIGHTNESS,
 			}
 		case d.VendorID == VID_ELGATO && d.ProductID == PID_STREAMDECK_XL:
 			dev = Device{
@@ -143,6 +147,7 @@ func Devices() ([]Device, error) {
 				Serial:               d.Serial,
 				Columns:              8,
 				Rows:                 4,
+				Keys:                 32,
 				Pixels:               96,
 				DPI:                  166,
 				Padding:              16,
@@ -152,13 +157,12 @@ func Devices() ([]Device, error) {
 				translateKeyIndex:    identity,
 				imagePageSize:        1024,
 				imagePageHeaderSize:  8,
-				imagePageHeader:      xlImagePageHeader,
+				imagePageHeader:      rev2ImagePageHeader,
 				toImageFormat:        toJPEG,
-				getFirmwareCommand:   c_XL_FIRMWARE,
-				resetCommand:         c_XL_RESET,
-				setBrightnessCommand: c_XL_BRIGHTNESS,
+				getFirmwareCommand:   c_REV2_FIRMWARE,
+				resetCommand:         c_REV2_RESET,
+				setBrightnessCommand: c_REV2_BRIGHTNESS,
 			}
-
 		}
 
 		if dev.ID != "" {
@@ -172,19 +176,19 @@ func Devices() ([]Device, error) {
 }
 
 // Open the device for input/output. This must be called before trying to
-// communicate with the device
+// communicate with the device.
 func (d *Device) Open() error {
 	var err error
 	d.device, err = d.info.Open()
 	return err
 }
 
-// Close the connection with the device
+// Close the connection with the device.
 func (d Device) Close() error {
 	return d.device.Close()
 }
 
-// FirmwareVersion returns the firmware version of the device
+// FirmwareVersion returns the firmware version of the device.
 func (d Device) FirmwareVersion() (string, error) {
 	result, err := d.getFeatureReport(d.getFirmwareCommand)
 	if err != nil {
@@ -193,15 +197,15 @@ func (d Device) FirmwareVersion() (string, error) {
 	return string(result[d.firmwareOffset:]), nil
 }
 
-// Resets the Stream Deck, clears all button images and shows the standby image
+// Resets the Stream Deck, clears all button images and shows the standby image.
 func (d Device) Reset() error {
 	return d.sendFeatureReport(d.resetCommand)
 }
 
-// Clears the Stream Deck, setting a black image on all buttons
+// Clears the Stream Deck, setting a black image on all buttons.
 func (d Device) Clear() error {
 	img := image.NewRGBA(image.Rect(0, 0, int(d.Pixels), int(d.Pixels)))
-	draw.Draw(img, img.Bounds(), image.NewUniform(color.RGBA{0, 0, 0, 255}), image.ZP, draw.Src)
+	draw.Draw(img, img.Bounds(), image.NewUniform(color.RGBA{0, 0, 0, 255}), image.Point{}, draw.Src)
 	for i := uint8(0); i <= d.Columns*d.Rows; i++ {
 		err := d.SetImage(i, img)
 		if err != nil {
@@ -213,7 +217,7 @@ func (d Device) Clear() error {
 	return nil
 }
 
-// ReadKeys returns a channel, which it will use to emit key presses/releases
+// ReadKeys returns a channel, which it will use to emit key presses/releases.
 func (d Device) ReadKeys() (chan Key, error) {
 	kch := make(chan Key)
 	keyBuffer := make([]byte, d.keyStateOffset+len(d.keyState))
@@ -242,7 +246,7 @@ func (d Device) ReadKeys() (chan Key, error) {
 	return kch, nil
 }
 
-// SetBrightness sets the background lighting brightness from 0 to 100 percent
+// SetBrightness sets the background lighting brightness from 0 to 100 percent.
 func (d Device) SetBrightness(percent uint8) error {
 	if percent > 100 {
 		percent = 100
@@ -326,18 +330,18 @@ func identity(index, _ uint8) uint8 {
 	return index
 }
 
-// toRGBA converts an image.Image to an image.RGBA
+// toRGBA converts an image.Image to an image.RGBA.
 func toRGBA(img image.Image) *image.RGBA {
-	switch img.(type) {
+	switch img := img.(type) {
 	case *image.RGBA:
-		return img.(*image.RGBA)
+		return img
 	}
 	out := image.NewRGBA(img.Bounds())
 	draw.Copy(out, image.Pt(0, 0), img, img.Bounds(), draw.Src, nil)
 	return out
 }
 
-// toBMP returns the raw bytes of the given image in BMP format, flipped horizontally
+// toBMP returns the raw bytes of the given image in BMP format, flipped horizontally.
 func toBMP(img image.Image) ([]byte, error) {
 	rgba := toRGBA(img)
 
@@ -374,7 +378,7 @@ func toBMP(img image.Image) ([]byte, error) {
 func toJPEG(img image.Image) ([]byte, error) {
 	// flip image horizontally and vertically
 	flipped := image.NewRGBA(img.Bounds())
-	draw.Copy(flipped, image.ZP, img, img.Bounds(), draw.Src, nil)
+	draw.Copy(flipped, image.Point{}, img, img.Bounds(), draw.Src, nil)
 	for y := 0; y < flipped.Bounds().Dy()/2; y++ {
 		yy := flipped.Bounds().Max.Y - y - 1
 		for x := 0; x < flipped.Bounds().Dx(); x++ {
@@ -397,8 +401,8 @@ func toJPEG(img image.Image) ([]byte, error) {
 	return buffer.Bytes(), err
 }
 
-// defaultImagePageHeader returns the image page header sequence used by the Stream Deck and Stream Deck Mini.
-func defaultImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastPage bool) []byte {
+// rev1ImagePageHeader returns the image page header sequence used by the Stream Deck v1 and Stream Deck Mini.
+func rev1ImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastPage bool) []byte {
 	var lastPageByte byte
 	if lastPage {
 		lastPageByte = 1
@@ -412,8 +416,8 @@ func defaultImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, la
 	}
 }
 
-// xlImagePageHeader returns the image page header sequence used by the Stream Deck XL.
-func xlImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastPage bool) []byte {
+// rev2ImagePageHeader returns the image page header sequence used by Stream Deck XL and Stream Deck v2.
+func rev2ImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastPage bool) []byte {
 	var lastPageByte byte
 	if lastPage {
 		lastPageByte = 1
