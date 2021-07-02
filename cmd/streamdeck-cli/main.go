@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	// RootCmd is the core command used for cli-arg parsing
+	// RootCmd is the core command used for cli-arg parsing.
 	RootCmd = &cobra.Command{
 		Use:           "streamdeck-cli",
 		Short:         "streamdeck-cli lets you control your Elgato Stream Deck",
