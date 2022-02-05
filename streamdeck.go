@@ -2,10 +2,13 @@ package streamdeck
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"image"
 	"image/color"
 	"image/jpeg"
+	"sync"
+	"time"
 
 	"github.com/karalabe/hid"
 	"golang.org/x/image/draw"
@@ -63,6 +66,14 @@ type Device struct {
 
 	device *hid.Device
 	info   hid.DeviceInfo
+
+	lastActionTime time.Time
+	asleep         bool
+	sleepCancel    context.CancelFunc
+	sleepMutex     *sync.RWMutex
+
+	brightness         uint8
+	preSleepBrightness uint8
 }
 
 // Key holds the current status of a key on the device.
@@ -185,11 +196,14 @@ func Devices() ([]Device, error) {
 func (d *Device) Open() error {
 	var err error
 	d.device, err = d.info.Open()
+	d.lastActionTime = time.Now()
+	d.sleepMutex = &sync.RWMutex{}
 	return err
 }
 
 // Close the connection with the device.
-func (d Device) Close() error {
+func (d *Device) Close() error {
+	d.cancelSleepTimer()
 	return d.device.Close()
 }
 
@@ -223,18 +237,32 @@ func (d Device) Clear() error {
 }
 
 // ReadKeys returns a channel, which it will use to emit key presses/releases.
-func (d Device) ReadKeys() (chan Key, error) {
+func (d *Device) ReadKeys() (chan Key, error) {
 	kch := make(chan Key)
 	keyBuffer := make([]byte, d.keyStateOffset+len(d.keyState))
 	go func() {
 		for {
 			copy(d.keyState, keyBuffer[d.keyStateOffset:])
 
-			_, err := d.device.Read(keyBuffer)
-			if err != nil {
+			if _, err := d.device.Read(keyBuffer); err != nil {
 				close(kch)
 				return
 			}
+
+			// don't trigger a key event if the device is asleep, but wake it
+			if d.asleep {
+				_ = d.Wake()
+
+				// reset state so no spurious key events get triggered
+				for i := d.keyStateOffset; i < len(keyBuffer); i++ {
+					keyBuffer[i] = 0
+				}
+				continue
+			}
+
+			d.sleepMutex.Lock()
+			d.lastActionTime = time.Now()
+			d.sleepMutex.Unlock()
 
 			for i := d.keyStateOffset; i < len(keyBuffer); i++ {
 				keyIndex := uint8(i - d.keyStateOffset)
@@ -251,10 +279,83 @@ func (d Device) ReadKeys() (chan Key, error) {
 	return kch, nil
 }
 
+// Sleep puts the device asleep, waiting for a key event to wake it up.
+func (d *Device) Sleep() error {
+	d.sleepMutex.Lock()
+	defer d.sleepMutex.Unlock()
+
+	d.asleep = true
+	d.preSleepBrightness = d.brightness
+	return d.SetBrightness(0)
+}
+
+// Wake wakes the device from sleep.
+func (d *Device) Wake() error {
+	d.sleepMutex.Lock()
+	defer d.sleepMutex.Unlock()
+
+	d.asleep = false
+	d.lastActionTime = time.Now()
+	return d.SetBrightness(d.preSleepBrightness)
+}
+
+// Asleep returns true if the device is asleep.
+func (d Device) Asleep() bool {
+	return d.asleep
+}
+
+func (d *Device) cancelSleepTimer() {
+	if d.sleepCancel == nil {
+		return
+	}
+
+	d.sleepCancel()
+	d.sleepCancel = nil
+}
+
+// SetSleepTimeout sets the time after which the device will sleep if no key
+// events are received.
+func (d *Device) SetSleepTimeout(t time.Duration) {
+	d.cancelSleepTimer()
+	if t == 0 {
+		return
+	}
+
+	var ctx context.Context
+	ctx, d.sleepCancel = context.WithCancel(context.Background())
+
+	go func() {
+		for {
+			select {
+			case <-time.After(time.Second):
+				d.sleepMutex.RLock()
+				since := time.Since(d.lastActionTime)
+				d.sleepMutex.RUnlock()
+
+				if !d.asleep && since >= t {
+					_ = d.Sleep()
+				}
+
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
 // SetBrightness sets the background lighting brightness from 0 to 100 percent.
-func (d Device) SetBrightness(percent uint8) error {
+func (d *Device) SetBrightness(percent uint8) error {
 	if percent > 100 {
 		percent = 100
+	}
+
+	d.brightness = percent
+	if d.asleep && percent > 0 {
+		// if the device is asleep, remember the brightness, but don't set it
+		d.sleepMutex.Lock()
+		d.preSleepBrightness = percent
+		d.sleepMutex.Unlock()
+		return nil
 	}
 
 	report := make([]byte, len(d.setBrightnessCommand)+1)
