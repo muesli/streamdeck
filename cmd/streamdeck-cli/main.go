@@ -5,13 +5,13 @@ import (
 	"log"
 	"os"
 
+	"github.com/muesli/coral"
 	"github.com/muesli/streamdeck"
-	"github.com/spf13/cobra"
 )
 
 var (
 	// RootCmd is the core command used for cli-arg parsing.
-	RootCmd = &cobra.Command{
+	RootCmd = &coral.Command{
 		Use:           "streamdeck-cli",
 		Short:         "streamdeck-cli lets you control your Elgato Stream Deck",
 		SilenceErrors: true,
