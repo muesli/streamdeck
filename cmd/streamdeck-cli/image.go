@@ -10,15 +10,15 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 
+	"github.com/muesli/coral"
 	"github.com/nfnt/resize"
-	"github.com/spf13/cobra"
 )
 
 var (
-	imageCmd = &cobra.Command{
+	imageCmd = &coral.Command{
 		Use:   "image <key> <image>",
 		Short: "sets an image on a key",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *coral.Command, args []string) error {
 			if len(args) < 2 {
 				return fmt.Errorf("image requires the key-index and an image")
 			}

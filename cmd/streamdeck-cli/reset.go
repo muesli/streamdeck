@@ -1,14 +1,14 @@
 package main
 
 import (
-	"github.com/spf13/cobra"
+	"github.com/muesli/coral"
 )
 
 var (
-	resetCmd = &cobra.Command{
+	resetCmd = &coral.Command{
 		Use:   "reset",
 		Short: "resets the device, clears all images and shows the default logo",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *coral.Command, args []string) error {
 			return d.Reset()
 		},
 	}

@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/spf13/cobra"
+	"github.com/muesli/coral"
 )
 
 var (
-	brightnessCmd = &cobra.Command{
+	brightnessCmd = &coral.Command{
 		Use:   "brightness <percentage>",
 		Short: "controls the brightness of the keys (in percent)",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *coral.Command, args []string) error {
 			if len(args) < 1 {
 				return fmt.Errorf("brightness requires a percentage")
 			}

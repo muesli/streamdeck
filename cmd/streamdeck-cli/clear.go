@@ -1,14 +1,14 @@
 package main
 
 import (
-	"github.com/spf13/cobra"
+	"github.com/muesli/coral"
 )
 
 var (
-	clearCmd = &cobra.Command{
+	clearCmd = &coral.Command{
 		Use:   "clear",
 		Short: "clears all images",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *coral.Command, args []string) error {
 			return d.Clear()
 		},
 	}
