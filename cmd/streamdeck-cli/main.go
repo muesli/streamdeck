@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/muesli/coral"
@@ -12,40 +11,48 @@ import (
 var (
 	// RootCmd is the core command used for cli-arg parsing.
 	RootCmd = &coral.Command{
-		Use:           "streamdeck-cli",
-		Short:         "streamdeck-cli lets you control your Elgato Stream Deck",
-		SilenceErrors: true,
-		SilenceUsage:  true,
+		Use:                "streamdeck-cli",
+		Short:              "streamdeck-cli lets you control your Elgato Stream Deck",
+		SilenceErrors:      true,
+		SilenceUsage:       true,
+		PersistentPreRunE:  initStreamDeck,
+		PersistentPostRunE: closeStreamDeck,
 	}
 
 	d streamdeck.Device
 )
 
-func main() {
+func closeStreamDeck(cmd *coral.Command, args []string) error {
+	return d.Close()
+}
+
+func initStreamDeck(cmd *coral.Command, args []string) error {
 	devs, err := streamdeck.Devices()
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("no Stream Deck devices found: %s", err)
 	}
 	if len(devs) == 0 {
-		log.Fatalln("No Stream Deck devices found.")
+		return fmt.Errorf("no Stream Deck devices found")
 	}
 	d = devs[0]
 
-	err = d.Open()
-	if err != nil {
-		panic(err)
+	if err := d.Open(); err != nil {
+		return fmt.Errorf("can't open device: %s", err)
 	}
-	defer d.Close()
 
 	ver, err := d.FirmwareVersion()
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("can't retrieve device info: %s", err)
 	}
 	fmt.Printf("Found device with serial %s (firmware %s)\n",
 		d.Serial, ver)
 
+	return nil
+}
+
+func main() {
 	if err := RootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(-1)
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		os.Exit(1)
 	}
 }
