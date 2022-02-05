@@ -11,6 +11,8 @@ import (
 	"golang.org/x/image/draw"
 )
 
+//nolint:revive
+// Stream Deck Vendor & Product IDs.
 const (
 	VID_ELGATO          = 0x0fd9
 	PID_STREAMDECK      = 0x0060
@@ -20,6 +22,8 @@ const (
 	PID_STREAMDECK_XL   = 0x006c
 )
 
+//nolint:revive
+// Firmware command IDs.
 var (
 	c_REV1_FIRMWARE   = []byte{0x04}
 	c_REV1_RESET      = []byte{0x0b, 0x63}

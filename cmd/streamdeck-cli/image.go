@@ -32,7 +32,7 @@ var (
 			if err != nil {
 				return err
 			}
-			defer f.Close()
+			defer f.Close() //nolint:errcheck // r/o file
 
 			img, _, err := image.Decode(f)
 			if err != nil {
