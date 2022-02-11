@@ -289,8 +289,13 @@ func (d *Device) Sleep() error {
 	d.sleepMutex.Lock()
 	defer d.sleepMutex.Unlock()
 
-	d.asleep = true
 	d.preSleepBrightness = d.brightness
+
+	if err := d.Fade(d.brightness, 0, -20); err != nil {
+		return err
+	}
+
+	d.asleep = true
 	return d.SetBrightness(0)
 }
 
@@ -300,6 +305,10 @@ func (d *Device) Wake() error {
 	defer d.sleepMutex.Unlock()
 
 	d.asleep = false
+	if err := d.Fade(0, d.preSleepBrightness, 20); err != nil {
+		return err
+	}
+
 	d.lastActionTime = time.Now()
 	return d.SetBrightness(d.preSleepBrightness)
 }
@@ -346,6 +355,20 @@ func (d *Device) SetSleepTimeout(t time.Duration) {
 			}
 		}
 	}()
+}
+
+// Fade fades the brightness in or out.
+func (d *Device) Fade(start uint8, end uint8, step int8) error {
+	for current := int8(start); ; current += step {
+		if !((start < end && current < int8(end)) || (start > end && current > int8(end))) {
+			break
+		}
+		if err := d.SetBrightness(uint8(current)); err != nil {
+			return err
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return nil
 }
 
 // SetBrightness sets the background lighting brightness from 0 to 100 percent.
