@@ -128,7 +128,7 @@ func Devices() ([]Device, error) {
 				featureReportSize:    17,
 				firmwareOffset:       5,
 				keyStateOffset:       1,
-				translateKeyIndex:    translateRightToLeft,
+				translateKeyIndex:    identity,
 				imagePageSize:        1024,
 				imagePageHeaderSize:  16,
 				imagePageHeader:      miniImagePageHeader,
