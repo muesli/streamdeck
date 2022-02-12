@@ -39,7 +39,7 @@ var (
 				return err
 			}
 
-			return d.SetImage(uint8(key), resize.Resize(72, 72, img, resize.Lanczos3))
+			return d.SetImage(uint8(key), resize.Resize(d.Pixels, d.Pixels, img, resize.Lanczos3))
 		},
 	}
 )
