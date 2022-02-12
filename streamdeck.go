@@ -129,7 +129,7 @@ func Devices() ([]Device, error) {
 				translateKeyIndex:    translateRightToLeft,
 				imagePageSize:        1024,
 				imagePageHeaderSize:  16,
-				imagePageHeader:      rev1ImagePageHeader,
+				imagePageHeader:      miniImagePageHeader,
 				toImageFormat:        toBMP,
 				getFirmwareCommand:   c_REV1_FIRMWARE,
 				resetCommand:         c_REV1_RESET,
@@ -507,7 +507,7 @@ func toJPEG(img image.Image) ([]byte, error) {
 	return buffer.Bytes(), err
 }
 
-// rev1ImagePageHeader returns the image page header sequence used by the Stream Deck v1 and Stream Deck Mini.
+// rev1ImagePageHeader returns the image page header sequence used by the Stream Deck v1.
 func rev1ImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastPage bool) []byte {
 	var lastPageByte byte
 	if lastPage {
@@ -516,6 +516,21 @@ func rev1ImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastP
 	return []byte{
 		0x02, 0x01,
 		byte(pageIndex + 1), 0x00,
+		lastPageByte,
+		keyIndex + 1,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+}
+
+// miniImagePageHeader returns the image page header sequence used by the Stream Deck Mini.
+func miniImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastPage bool) []byte {
+	var lastPageByte byte
+	if lastPage {
+		lastPageByte = 1
+	}
+	return []byte{
+		0x02, 0x01,
+		byte(pageIndex), 0x00,
 		lastPageByte,
 		keyIndex + 1,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
