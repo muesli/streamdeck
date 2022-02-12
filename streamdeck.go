@@ -55,6 +55,7 @@ type Device struct {
 	translateKeyIndex   func(index, columns uint8) uint8
 	imagePageSize       int
 	imagePageHeaderSize int
+	flipImage           func(image.Image) image.Image
 	toImageFormat       func(image.Image) ([]byte, error)
 	imagePageHeader     func(pageIndex int, keyIndex uint8, payloadLength int, lastPage bool) []byte
 
@@ -108,6 +109,7 @@ func Devices() ([]Device, error) {
 				imagePageSize:        7819,
 				imagePageHeaderSize:  16,
 				imagePageHeader:      rev1ImagePageHeader,
+				flipImage:            flipHorizontally,
 				toImageFormat:        toBMP,
 				getFirmwareCommand:   c_REV1_FIRMWARE,
 				resetCommand:         c_REV1_RESET,
@@ -130,6 +132,7 @@ func Devices() ([]Device, error) {
 				imagePageSize:        1024,
 				imagePageHeaderSize:  16,
 				imagePageHeader:      miniImagePageHeader,
+				flipImage:            rotateCounterclockwise,
 				toImageFormat:        toBMP,
 				getFirmwareCommand:   c_REV1_FIRMWARE,
 				resetCommand:         c_REV1_RESET,
@@ -152,6 +155,7 @@ func Devices() ([]Device, error) {
 				imagePageSize:        1024,
 				imagePageHeaderSize:  8,
 				imagePageHeader:      rev2ImagePageHeader,
+				flipImage:            flipHorizontallyAndVertically,
 				toImageFormat:        toJPEG,
 				getFirmwareCommand:   c_REV2_FIRMWARE,
 				resetCommand:         c_REV2_RESET,
@@ -174,6 +178,7 @@ func Devices() ([]Device, error) {
 				imagePageSize:        1024,
 				imagePageHeaderSize:  8,
 				imagePageHeader:      rev2ImagePageHeader,
+				flipImage:            flipHorizontallyAndVertically,
 				toImageFormat:        toJPEG,
 				getFirmwareCommand:   c_REV2_FIRMWARE,
 				resetCommand:         c_REV2_RESET,
@@ -374,7 +379,7 @@ func (d Device) SetImage(index uint8, img image.Image) error {
 		return fmt.Errorf("supplied image has wrong dimensions, expected %[1]dx%[1]d pixels", d.Pixels)
 	}
 
-	imageBytes, err := d.toImageFormat(img)
+	imageBytes, err := d.toImageFormat(d.flipImage(img))
 	if err != nil {
 		return fmt.Errorf("cannot convert image data: %v", err)
 	}
@@ -447,7 +452,60 @@ func toRGBA(img image.Image) *image.RGBA {
 	return out
 }
 
-// toBMP returns the raw bytes of the given image in BMP format, flipped horizontally.
+// flipHorizontally returns the given image horizontally flipped.
+func flipHorizontally(img image.Image) image.Image {
+	flipped := image.NewRGBA(img.Bounds())
+	draw.Copy(flipped, image.Point{}, img, img.Bounds(), draw.Src, nil)
+	for y := 0; y < flipped.Bounds().Dy(); y++ {
+		for x := 0; x < flipped.Bounds().Dx()/2; x++ {
+			xx := flipped.Bounds().Max.X - x - 1
+			c := flipped.RGBAAt(x, y)
+			flipped.SetRGBA(x, y, flipped.RGBAAt(xx, y))
+			flipped.SetRGBA(xx, y, c)
+		}
+	}
+	return flipped
+}
+
+// flipHorizontallyAndVertically returns the given image horizontally and vertically flipped.
+func flipHorizontallyAndVertically(img image.Image) image.Image {
+	flipped := image.NewRGBA(img.Bounds())
+	draw.Copy(flipped, image.Point{}, img, img.Bounds(), draw.Src, nil)
+	for y := 0; y < flipped.Bounds().Dy()/2; y++ {
+		yy := flipped.Bounds().Max.Y - y - 1
+		for x := 0; x < flipped.Bounds().Dx(); x++ {
+			xx := flipped.Bounds().Max.X - x - 1
+			c := flipped.RGBAAt(x, y)
+			flipped.SetRGBA(x, y, flipped.RGBAAt(xx, yy))
+			flipped.SetRGBA(xx, yy, c)
+		}
+	}
+	return flipped
+}
+
+// rotateCounterclockwise returns the given image rotated counterclockwise
+func rotateCounterclockwise(img image.Image) image.Image {
+	flipped := image.NewRGBA(img.Bounds())
+	draw.Copy(flipped, image.Point{}, img, img.Bounds(), draw.Src, nil)
+	for y := 0; y < flipped.Bounds().Dy(); y++ {
+		for x := y + 1; x < flipped.Bounds().Dx(); x++ {
+			c := flipped.RGBAAt(x, y)
+			flipped.SetRGBA(x, y, flipped.RGBAAt(y, x))
+			flipped.SetRGBA(y, x, c)
+		}
+	}
+	for y := 0; y < flipped.Bounds().Dy()/2; y++ {
+		yy := flipped.Bounds().Max.Y - y - 1
+		for x := 0; x < flipped.Bounds().Dx(); x++ {
+			c := flipped.RGBAAt(x, y)
+			flipped.SetRGBA(x, y, flipped.RGBAAt(x, yy))
+			flipped.SetRGBA(x, yy, c)
+		}
+	}
+	return flipped
+}
+
+// toBMP returns the raw bytes of the given image in BMP format
 func toBMP(img image.Image) ([]byte, error) {
 	rgba := toRGBA(img)
 
@@ -468,8 +526,7 @@ func toBMP(img image.Image) ([]byte, error) {
 
 	i := len(header)
 	for y := 0; y < rgba.Bounds().Dy(); y++ {
-		// flip image horizontally
-		for x := rgba.Bounds().Dx() - 1; x >= 0; x-- {
+		for x := 0; x < rgba.Bounds().Dx(); x++ {
 			c := rgba.RGBAAt(x, y)
 			buffer[i] = c.B
 			buffer[i+1] = c.G
@@ -480,27 +537,13 @@ func toBMP(img image.Image) ([]byte, error) {
 	return buffer, nil
 }
 
-// toJPEG returns the raw bytes of the given image in JPEG format, flipped horizontally and vertically.
+// toJPEG returns the raw bytes of the given image in JPEG format
 func toJPEG(img image.Image) ([]byte, error) {
-	// flip image horizontally and vertically
-	flipped := image.NewRGBA(img.Bounds())
-	draw.Copy(flipped, image.Point{}, img, img.Bounds(), draw.Src, nil)
-	for y := 0; y < flipped.Bounds().Dy()/2; y++ {
-		yy := flipped.Bounds().Max.Y - y - 1
-		for x := 0; x < flipped.Bounds().Dx(); x++ {
-			xx := flipped.Bounds().Max.X - x - 1
-
-			c := flipped.RGBAAt(x, y)
-			flipped.SetRGBA(x, y, flipped.RGBAAt(xx, yy))
-			flipped.SetRGBA(xx, yy, c)
-		}
-	}
-
 	buffer := bytes.NewBuffer([]byte{})
 	opts := jpeg.Options{
 		Quality: 100,
 	}
-	err := jpeg.Encode(buffer, flipped, &opts)
+	err := jpeg.Encode(buffer, img, &opts)
 	if err != nil {
 		return nil, err
 	}
