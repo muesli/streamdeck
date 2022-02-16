@@ -40,12 +40,14 @@ func initStreamDeck(cmd *coral.Command, args []string) error {
 		return fmt.Errorf("can't open device: %s", err)
 	}
 
-	ver, err := d.FirmwareVersion()
-	if err != nil {
-		return fmt.Errorf("can't retrieve device info: %s", err)
-	}
-	fmt.Printf("Found device with serial %s (firmware %s)\n",
-		d.Serial, ver)
+	/*
+		ver, err := d.FirmwareVersion()
+		if err != nil {
+			return fmt.Errorf("can't retrieve device info: %s", err)
+		}
+		fmt.Printf("Found device with serial %s (firmware %s)\n",
+			d.Serial, ver)
+	*/
 
 	return nil
 }

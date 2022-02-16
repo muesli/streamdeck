@@ -186,7 +186,7 @@ func Devices() ([]Device, error) {
 			}
 		}
 
-		if dev.ID != "" {
+		if dev.ID != "" || dev.Serial != "" {
 			dev.keyState = make([]byte, dev.Columns*dev.Rows)
 			dev.info = d
 			dd = append(dd, dev)
