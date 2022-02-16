@@ -12,7 +12,7 @@ var (
 		Use:   "devices",
 		Short: "devices lists all available Stream Deck devices",
 		RunE: func(cmd *coral.Command, args []string) error {
-			d.Close()
+			_ = d.Close()
 
 			devs, err := streamdeck.Devices()
 			if err != nil {
@@ -36,7 +36,7 @@ var (
 				fmt.Printf("Serial %s with %d keys (ID: %s, firmware %s)\n",
 					d.Serial, d.Keys, d.ID, ver)
 
-				d.Close()
+				_ = d.Close()
 			}
 
 			return nil
