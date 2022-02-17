@@ -7,11 +7,17 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"math"
 	"sync"
 	"time"
 
 	"github.com/karalabe/hid"
 	"golang.org/x/image/draw"
+)
+
+const (
+	// 30 fps fade animation
+	fadeDelay = time.Second / 30
 )
 
 //nolint:revive
@@ -72,6 +78,7 @@ type Device struct {
 	asleep         bool
 	sleepCancel    context.CancelFunc
 	sleepMutex     *sync.RWMutex
+	fadeDuration   time.Duration
 
 	brightness         uint8
 	preSleepBrightness uint8
@@ -291,7 +298,7 @@ func (d *Device) Sleep() error {
 
 	d.preSleepBrightness = d.brightness
 
-	if err := d.Fade(d.brightness, 0, -20); err != nil {
+	if err := d.Fade(d.brightness, 0, d.fadeDuration); err != nil {
 		return err
 	}
 
@@ -305,7 +312,7 @@ func (d *Device) Wake() error {
 	defer d.sleepMutex.Unlock()
 
 	d.asleep = false
-	if err := d.Fade(0, d.preSleepBrightness, 20); err != nil {
+	if err := d.Fade(0, d.preSleepBrightness, d.fadeDuration); err != nil {
 		return err
 	}
 
@@ -325,6 +332,12 @@ func (d *Device) cancelSleepTimer() {
 
 	d.sleepCancel()
 	d.sleepCancel = nil
+}
+
+// SetSleepFadeDuration sets the duration of the fading animation when the
+// device is put to sleep or wakes up.
+func (d *Device) SetSleepFadeDuration(t time.Duration) {
+	d.fadeDuration = t
 }
 
 // SetSleepTimeout sets the time after which the device will sleep if no key
@@ -358,15 +371,22 @@ func (d *Device) SetSleepTimeout(t time.Duration) {
 }
 
 // Fade fades the brightness in or out.
-func (d *Device) Fade(start uint8, end uint8, step int8) error {
-	for current := int8(start); ; current += step {
-		if !((start < end && current < int8(end)) || (start > end && current > int8(end))) {
+func (d *Device) Fade(start uint8, end uint8, duration time.Duration) error {
+	step := (float64(end) - float64(start)) / float64(duration/fadeDelay)
+	if step == math.Inf(1) || step == math.Inf(-1) {
+		return nil
+	}
+
+	for current := float64(start); ; current += step {
+		if !((start < end && int8(current) < int8(end)) ||
+			(start > end && int8(current) > int8(end))) {
 			break
 		}
 		if err := d.SetBrightness(uint8(current)); err != nil {
 			return err
 		}
-		time.Sleep(50 * time.Millisecond)
+
+		time.Sleep(fadeDelay)
 	}
 	return nil
 }
