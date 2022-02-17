@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	// 30 fps fade animation
+	// 30 fps fade animation.
 	fadeDelay = time.Second / 30
 )
 
@@ -445,7 +445,8 @@ func (d Device) SetImage(index uint8, img image.Image) error {
 
 		_, err := d.device.Write(data)
 		if err != nil {
-			return fmt.Errorf("cannot write image page %d of %d (%d image bytes) %d bytes: %v", page, imageData.PageCount(), imageData.Length(), len(data), err)
+			return fmt.Errorf("cannot write image page %d of %d (%d image bytes) %d bytes: %v",
+				page, imageData.PageCount(), imageData.Length(), len(data), err)
 		}
 
 		page++
@@ -454,7 +455,8 @@ func (d Device) SetImage(index uint8, img image.Image) error {
 	return nil
 }
 
-// getFeatureReport from the device without worries about the correct payload size.
+// getFeatureReport from the device without worries about the correct payload
+// size.
 func (d Device) getFeatureReport(payload []byte) ([]byte, error) {
 	b := make([]byte, d.featureReportSize)
 	copy(b, payload)
@@ -465,7 +467,8 @@ func (d Device) getFeatureReport(payload []byte) ([]byte, error) {
 	return b, nil
 }
 
-// sendFeatureReport to the device without worries about the correct payload size.
+// sendFeatureReport to the device without worries about the correct payload
+// size.
 func (d Device) sendFeatureReport(payload []byte) error {
 	b := make([]byte, d.featureReportSize)
 	copy(b, payload)
@@ -473,7 +476,8 @@ func (d Device) sendFeatureReport(payload []byte) error {
 	return err
 }
 
-// translateRightToLeft translates the given key index from right-to-left to left-to-right, based on the given number of columns.
+// translateRightToLeft translates the given key index from right-to-left to
+// left-to-right, based on the given number of columns.
 func translateRightToLeft(index, columns uint8) uint8 {
 	keyCol := index % columns
 	return (index - keyCol) + (columns - 1) - keyCol
@@ -510,7 +514,8 @@ func flipHorizontally(img image.Image) image.Image {
 	return flipped
 }
 
-// flipHorizontallyAndVertically returns the given image horizontally and vertically flipped.
+// flipHorizontallyAndVertically returns the given image horizontally and
+// vertically flipped.
 func flipHorizontallyAndVertically(img image.Image) image.Image {
 	flipped := image.NewRGBA(img.Bounds())
 	draw.Copy(flipped, image.Point{}, img, img.Bounds(), draw.Src, nil)
@@ -526,7 +531,7 @@ func flipHorizontallyAndVertically(img image.Image) image.Image {
 	return flipped
 }
 
-// rotateCounterclockwise returns the given image rotated counterclockwise
+// rotateCounterclockwise returns the given image rotated counterclockwise.
 func rotateCounterclockwise(img image.Image) image.Image {
 	flipped := image.NewRGBA(img.Bounds())
 	draw.Copy(flipped, image.Point{}, img, img.Bounds(), draw.Src, nil)
@@ -548,7 +553,7 @@ func rotateCounterclockwise(img image.Image) image.Image {
 	return flipped
 }
 
-// toBMP returns the raw bytes of the given image in BMP format
+// toBMP returns the raw bytes of the given image in BMP format.
 func toBMP(img image.Image) ([]byte, error) {
 	rgba := toRGBA(img)
 
@@ -580,7 +585,7 @@ func toBMP(img image.Image) ([]byte, error) {
 	return buffer, nil
 }
 
-// toJPEG returns the raw bytes of the given image in JPEG format
+// toJPEG returns the raw bytes of the given image in JPEG format.
 func toJPEG(img image.Image) ([]byte, error) {
 	buffer := bytes.NewBuffer([]byte{})
 	opts := jpeg.Options{
@@ -593,7 +598,8 @@ func toJPEG(img image.Image) ([]byte, error) {
 	return buffer.Bytes(), err
 }
 
-// rev1ImagePageHeader returns the image page header sequence used by the Stream Deck v1.
+// rev1ImagePageHeader returns the image page header sequence used by the
+// Stream Deck v1.
 func rev1ImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastPage bool) []byte {
 	var lastPageByte byte
 	if lastPage {
@@ -608,7 +614,8 @@ func rev1ImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastP
 	}
 }
 
-// miniImagePageHeader returns the image page header sequence used by the Stream Deck Mini.
+// miniImagePageHeader returns the image page header sequence used by the
+// Stream Deck Mini.
 func miniImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastPage bool) []byte {
 	var lastPageByte byte
 	if lastPage {
@@ -623,7 +630,8 @@ func miniImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastP
 	}
 }
 
-// rev2ImagePageHeader returns the image page header sequence used by Stream Deck XL and Stream Deck v2.
+// rev2ImagePageHeader returns the image page header sequence used by Stream
+// Deck XL and Stream Deck v2.
 func rev2ImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastPage bool) []byte {
 	var lastPageByte byte
 	if lastPage {
@@ -636,13 +644,15 @@ func rev2ImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastP
 	}
 }
 
-// imageData allows to access raw image data in a byte array through pages of a given size.
+// imageData allows to access raw image data in a byte array through pages of a
+// given size.
 type imageData struct {
 	image    []byte
 	pageSize int
 }
 
-// Page returns the page with the given index and an indication if this is the last page.
+// Page returns the page with the given index and an indication if this is the
+// last page.
 func (d imageData) Page(pageIndex int) ([]byte, bool) {
 	offset := pageIndex * d.pageSize
 	if offset >= len(d.image) {
