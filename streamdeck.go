@@ -23,12 +23,13 @@ const (
 //nolint:revive
 // Stream Deck Vendor & Product IDs.
 const (
-	VID_ELGATO          = 0x0fd9
-	PID_STREAMDECK      = 0x0060
-	PID_STREAMDECK_V2   = 0x006d
-	PID_STREAMDECK_MK2  = 0x0080
-	PID_STREAMDECK_MINI = 0x0063
-	PID_STREAMDECK_XL   = 0x006c
+	VID_ELGATO              = 0x0fd9
+	PID_STREAMDECK          = 0x0060
+	PID_STREAMDECK_V2       = 0x006d
+	PID_STREAMDECK_MK2      = 0x0080
+	PID_STREAMDECK_MINI     = 0x0063
+	PID_STREAMDECK_MINI_MK2 = 0x0090
+	PID_STREAMDECK_XL       = 0x006c
 )
 
 //nolint:revive
@@ -122,7 +123,7 @@ func Devices() ([]Device, error) {
 				resetCommand:         c_REV1_RESET,
 				setBrightnessCommand: c_REV1_BRIGHTNESS,
 			}
-		case d.VendorID == VID_ELGATO && d.ProductID == PID_STREAMDECK_MINI:
+		case d.VendorID == VID_ELGATO && (d.ProductID == PID_STREAMDECK_MINI || d.ProductID == PID_STREAMDECK_MINI_MK2):
 			dev = Device{
 				ID:                   d.Path,
 				Serial:               d.Serial,
