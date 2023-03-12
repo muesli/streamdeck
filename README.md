@@ -2,7 +2,7 @@
 
 [![Latest Release](https://img.shields.io/github/release/muesli/streamdeck.svg?style=for-the-badge)](https://github.com/muesli/streamdeck/releases)
 [![Software License](https://img.shields.io/badge/license-MIT-brightgreen.svg?style=for-the-badge)](/LICENSE)
-[![Build Status](https://img.shields.io/github/workflow/status/muesli/streamdeck/build?style=for-the-badge)](https://github.com/muesli/streamdeck/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/muesli/streamdeck/build.yml?branch=master&style=for-the-badge)](https://github.com/muesli/streamdeck/actions)
 [![Go ReportCard](https://goreportcard.com/badge/github.com/muesli/streamdeck?style=for-the-badge)](https://goreportcard.com/report/muesli/streamdeck)
 [![Go Doc](https://img.shields.io/badge/godoc-reference-blue.svg?style=for-the-badge)](https://pkg.go.dev/github.com/muesli/streamdeck)
 
