@@ -31,6 +31,7 @@ const (
 	PID_STREAMDECK_MINI     = 0x0063
 	PID_STREAMDECK_MINI_MK2 = 0x0090
 	PID_STREAMDECK_XL       = 0x006c
+	PID_STREAMDECK_PLUS     = 0x0084
 )
 
 // Firmware command IDs.
@@ -62,6 +63,7 @@ type Device struct {
 	firmwareOffset      int
 	keyStateOffset      int
 	translateKeyIndex   func(index, columns uint8) uint8
+	readKeys            func(*Device) (chan Key, error)
 	imagePageSize       int
 	imagePageHeaderSize int
 	flipImage           func(image.Image) image.Image
@@ -89,8 +91,9 @@ type Device struct {
 
 // Key holds the current status of a key on the device.
 type Key struct {
-	Index   uint8
-	Pressed bool
+	Index       uint8
+	Pressed     bool
+	NotHoldable bool
 }
 
 // Devices returns all attached Stream Decks.
@@ -116,6 +119,7 @@ func Devices() ([]Device, error) {
 				firmwareOffset:       5,
 				keyStateOffset:       1,
 				translateKeyIndex:    translateRightToLeft,
+				readKeys:             readKeysForButtonsOnlyInput,
 				imagePageSize:        7819,
 				imagePageHeaderSize:  16,
 				imagePageHeader:      rev1ImagePageHeader,
@@ -139,6 +143,7 @@ func Devices() ([]Device, error) {
 				firmwareOffset:       5,
 				keyStateOffset:       1,
 				translateKeyIndex:    identity,
+				readKeys:             readKeysForButtonsOnlyInput,
 				imagePageSize:        1024,
 				imagePageHeaderSize:  16,
 				imagePageHeader:      miniImagePageHeader,
@@ -162,6 +167,7 @@ func Devices() ([]Device, error) {
 				firmwareOffset:       6,
 				keyStateOffset:       4,
 				translateKeyIndex:    identity,
+				readKeys:             readKeysForButtonsOnlyInput,
 				imagePageSize:        1024,
 				imagePageHeaderSize:  8,
 				imagePageHeader:      rev2ImagePageHeader,
@@ -185,6 +191,7 @@ func Devices() ([]Device, error) {
 				firmwareOffset:       6,
 				keyStateOffset:       4,
 				translateKeyIndex:    identity,
+				readKeys:             readKeysForButtonsOnlyInput,
 				imagePageSize:        1024,
 				imagePageHeaderSize:  8,
 				imagePageHeader:      rev2ImagePageHeader,
@@ -194,10 +201,34 @@ func Devices() ([]Device, error) {
 				resetCommand:         c_REV2_RESET,
 				setBrightnessCommand: c_REV2_BRIGHTNESS,
 			}
+		case d.VendorID == VID_ELGATO && d.ProductID == PID_STREAMDECK_PLUS:
+			dev = Device{
+				ID:                   d.Path,
+				Serial:               d.Serial,
+				Columns:              4,
+				Rows:                 2,
+				Keys:                 24,
+				Pixels:               120,
+				DPI:                  124,
+				Padding:              16,
+				featureReportSize:    32,
+				firmwareOffset:       6,
+				keyStateOffset:       4,
+				translateKeyIndex:    identity,
+				readKeys:             readKeysForMultipleInputTypes,
+				imagePageSize:        1024,
+				imagePageHeaderSize:  8,
+				imagePageHeader:      rev2ImagePageHeader,
+				flipImage:            noFlipping,
+				toImageFormat:        toJPEG,
+				getFirmwareCommand:   c_REV2_FIRMWARE,
+				resetCommand:         c_REV2_RESET,
+				setBrightnessCommand: c_REV2_BRIGHTNESS,
+			}
 		}
 
 		if dev.ID != "" {
-			dev.keyState = make([]byte, dev.Columns*dev.Rows)
+			dev.keyState = make([]byte, dev.Keys)
 			dev.info = d
 			dd = append(dd, dev)
 		}
@@ -253,6 +284,10 @@ func (d Device) Clear() error {
 
 // ReadKeys returns a channel, which it will use to emit key presses/releases.
 func (d *Device) ReadKeys() (chan Key, error) {
+	return d.readKeys(d)
+}
+
+func readKeysForButtonsOnlyInput(d *Device) (chan Key, error) {
 	kch := make(chan Key)
 	keyBuffer := make([]byte, d.keyStateOffset+len(d.keyState))
 	go func() {
@@ -285,6 +320,95 @@ func (d *Device) ReadKeys() (chan Key, error) {
 					kch <- Key{
 						Index:   d.translateKeyIndex(keyIndex, d.Columns),
 						Pressed: keyBuffer[i] == 1,
+					}
+				}
+			}
+		}
+	}()
+
+	return kch, nil
+}
+
+func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
+	kch := make(chan Key)
+	inputBuffer := make([]byte, 12)
+	go func() {
+		const INPUT_TYPE_ID_BUTTON = uint8(0)
+		const INPUT_TYPE_ID_KNOB = uint8(3)
+
+		const INPUT_KNOB_USAGE_PRESS = uint8(0)
+		const INPUT_KNOB_USAGE_DIAL = uint8(1)
+		const INPUT_KNOB_STATE_OFFSET = uint8(5)
+		const INPUT_KNOB_COUNT = uint8(4)
+
+		const INPUT_POSITION_TYPE_IO = uint8(1)
+		const INPUT_POSITION_KNOB_USAGE_ID = uint8(4)
+
+		for {
+			if _, err := device.device.Read(inputBuffer); err != nil {
+				close(kch)
+				return
+			}
+
+			// don't trigger a key event if the device is asleep, but wake it
+			if device.asleep {
+				_ = device.Wake()
+
+				// reset state so no spurious key events get triggered
+				for i := device.keyStateOffset; i < len(inputBuffer); i++ {
+					inputBuffer[i] = 0
+				}
+				continue
+			}
+
+			device.sleepMutex.Lock()
+			device.lastActionTime = time.Now()
+			device.sleepMutex.Unlock()
+
+			inputType := inputBuffer[INPUT_POSITION_TYPE_IO]
+
+			if inputType == INPUT_TYPE_ID_BUTTON {
+				for i := device.keyStateOffset; i < len(inputBuffer); i++ {
+					keyIndex := uint8(i - device.keyStateOffset)
+					if inputBuffer[i] != device.keyState[keyIndex] {
+						device.keyState[keyIndex] = inputBuffer[i]
+						kch <- Key{
+							Index:   device.translateKeyIndex(keyIndex, device.Columns),
+							Pressed: inputBuffer[i] == 1,
+						}
+					}
+				}
+			} else if inputType == INPUT_TYPE_ID_KNOB {
+				knobUsage := inputBuffer[INPUT_POSITION_KNOB_USAGE_ID]
+
+				for i := INPUT_KNOB_STATE_OFFSET; i < INPUT_KNOB_STATE_OFFSET+INPUT_KNOB_COUNT; i++ {
+					keyValue := inputBuffer[i]
+
+					if knobUsage == INPUT_KNOB_USAGE_PRESS {
+						keyIndex := i - INPUT_KNOB_STATE_OFFSET + device.Columns*device.Rows
+
+						if keyValue != device.keyState[keyIndex] {
+							device.keyState[keyIndex] = keyValue
+
+							kch <- Key{
+								Index:   keyIndex,
+								Pressed: keyValue == 1,
+							}
+						}
+					} else if knobUsage == INPUT_KNOB_USAGE_DIAL && inputBuffer[i] > 0 {
+						var keyIndex uint8
+
+						if int(keyValue)-128 > 0 { //left
+							keyIndex = i - INPUT_KNOB_STATE_OFFSET + device.Columns*device.Rows + INPUT_KNOB_COUNT
+						} else { //right
+							keyIndex = i - INPUT_KNOB_STATE_OFFSET + device.Columns*device.Rows + 2*INPUT_KNOB_COUNT
+						}
+
+						kch <- Key{
+							Index:       device.translateKeyIndex(keyIndex, device.Columns),
+							Pressed:     true,
+							NotHoldable: true,
+						}
 					}
 				}
 			}
@@ -500,6 +624,11 @@ func toRGBA(img image.Image) *image.RGBA {
 	out := image.NewRGBA(img.Bounds())
 	draw.Copy(out, image.Pt(0, 0), img, img.Bounds(), draw.Src, nil)
 	return out
+}
+
+// noFlipping returns the given image without any flipping.
+func noFlipping(img image.Image) image.Image {
+	return img
 }
 
 // flipHorizontally returns the given image horizontally flipped.
