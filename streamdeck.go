@@ -3,6 +3,7 @@ package streamdeck
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"image"
 	"image/color"
@@ -331,9 +332,10 @@ func readKeysForButtonsOnlyInput(d *Device) (chan Key, error) {
 
 func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 	kch := make(chan Key)
-	inputBuffer := make([]byte, 12)
+	inputBuffer := make([]byte, 13)
 	go func() {
 		const INPUT_TYPE_ID_BUTTON = uint8(0)
+		const INPUT_TYPE_ID_TOUCH = uint8(2)
 		const INPUT_TYPE_ID_KNOB = uint8(3)
 
 		const INPUT_KNOB_USAGE_PRESS = uint8(0)
@@ -341,8 +343,18 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 		const INPUT_KNOB_STATE_OFFSET = uint8(5)
 		const INPUT_KNOB_COUNT = uint8(4)
 
+		const INPUT_TOUCH_USAGE_SHORT = uint8(1)
+		const INPUT_TOUCH_USAGE_LONG = uint8(2)
+		const INPUT_TOUCH_USAGE_SWIPE = uint8(3)
+		const INPUT_TOUCH_SEGMENTS_COUNT = uint8(4)
+
 		const INPUT_POSITION_TYPE_IO = uint8(1)
 		const INPUT_POSITION_KNOB_USAGE_ID = uint8(4)
+		const INPUT_POSITION_TOUCH_USAGE_ID = uint8(4)
+		const INPUT_POSITION_TOUCH_X_ID = uint8(6)
+		const INPUT_POSITION_TOUCH_Y_ID = uint8(8)
+		const INPUT_POSITION_TOUCH_X2_ID = uint8(10)
+		const INPUT_POSITION_TOUCH_Y2_ID = uint8(12)
 
 		for {
 			if _, err := device.device.Read(inputBuffer); err != nil {
@@ -373,7 +385,7 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 					if inputBuffer[i] != device.keyState[keyIndex] {
 						device.keyState[keyIndex] = inputBuffer[i]
 						kch <- Key{
-							Index:   device.translateKeyIndex(keyIndex, device.Columns),
+							Index:   keyIndex,
 							Pressed: inputBuffer[i] == 1,
 						}
 					}
@@ -405,11 +417,43 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 						}
 
 						kch <- Key{
-							Index:       device.translateKeyIndex(keyIndex, device.Columns),
+							Index:       keyIndex,
 							Pressed:     true,
 							NotHoldable: true,
 						}
 					}
+				}
+			} else if inputType == INPUT_TYPE_ID_TOUCH {
+				touchUsage := inputBuffer[INPUT_POSITION_TOUCH_USAGE_ID]
+
+				x := binary.LittleEndian.Uint16(inputBuffer[INPUT_POSITION_TOUCH_X_ID:])
+				segment := uint8(math.Floor(float64(x / 200.0)))
+
+				var keyIndex uint8
+
+				if touchUsage == INPUT_TOUCH_USAGE_SHORT {
+					keyIndex = device.Columns*device.Rows + 3*INPUT_KNOB_COUNT + segment
+
+				} else if touchUsage == INPUT_TOUCH_USAGE_LONG {
+					keyIndex = device.Columns*device.Rows + 3*INPUT_KNOB_COUNT + INPUT_TOUCH_SEGMENTS_COUNT + segment
+
+				} else if touchUsage == INPUT_TOUCH_USAGE_SWIPE {
+					x2 := binary.LittleEndian.Uint16(inputBuffer[INPUT_POSITION_TOUCH_X2_ID:])
+					startSegment := uint8(math.Floor(float64(x / 40.0)))
+					stopSegment := uint8(math.Floor(float64(x2 / 40.0)))
+
+					if startSegment < stopSegment { //left to right
+						keyIndex = device.Columns*device.Rows + 3*INPUT_KNOB_COUNT + 2*INPUT_TOUCH_SEGMENTS_COUNT
+					} else if startSegment > stopSegment { //right to left
+						keyIndex = device.Columns*device.Rows + 3*INPUT_KNOB_COUNT + 2*INPUT_TOUCH_SEGMENTS_COUNT + 1
+					} else {
+						continue
+					}
+				}
+				kch <- Key{
+					Index:       keyIndex,
+					Pressed:     true,
+					NotHoldable: true,
 				}
 			}
 		}
