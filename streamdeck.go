@@ -626,6 +626,58 @@ func (d Device) SetImage(index uint8, img image.Image) error {
 	return nil
 }
 
+// SetTouchScreenImage sets the image of a segment of the Stream Deck Plus touch screen. The provided image
+// needs to be in the correct resolution for the device. The index starts with
+// 0 to 3.
+func (d Device) SetTouchScreenImage(segmentIndex uint8, img image.Image) error {
+
+	const TOUCHSCREEN_WIDTH = uint(800)
+	const TOUCHSCREEN_SEGMENT_WIDTH = uint(200)
+	const TOUCHSCREEN_HEIGHT = uint(100)
+
+	imageBytes, err := d.toImageFormat(d.flipImage(img))
+
+	if err != nil {
+		return fmt.Errorf("cannot convert image data: %v", err)
+	}
+
+	const MAX_PACKET_SIZE = 1024
+	const PACKET_HEADER_LENGTH = 16
+	const MAX_PAYLOAD_SIZE = MAX_PACKET_SIZE - PACKET_HEADER_LENGTH
+
+	imageData := imageData{
+		image: imageBytes,
+		//pageSize: d.imagePageSize - d.imagePageHeaderSize,
+		pageSize: MAX_PAYLOAD_SIZE,
+	}
+
+	x := int(uint(segmentIndex) * TOUCHSCREEN_SEGMENT_WIDTH)
+	y := 0
+
+	data := make([]byte, MAX_PACKET_SIZE)
+
+	var page int
+	var lastPage bool
+	for !lastPage {
+		var payload []byte
+		payload, lastPage = imageData.Page(page)
+		header := touchScreenImagePageHeader(page, x, y, TOUCHSCREEN_SEGMENT_WIDTH, TOUCHSCREEN_HEIGHT, len(payload), lastPage)
+
+		copy(data, header)
+		copy(data[len(header):], payload)
+
+		_, err := d.device.Write(data)
+		if err != nil {
+			return fmt.Errorf("cannot write image page %d of %d (%d image bytes) %d bytes: %v",
+				page, imageData.PageCount(), imageData.Length(), len(data), err)
+		}
+
+		page++
+	}
+
+	return nil
+}
+
 // getFeatureReport from the device without worries about the correct payload
 // size.
 func (d Device) getFeatureReport(payload []byte) ([]byte, error) {
@@ -817,6 +869,35 @@ func rev2ImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastP
 		0x02, 0x07, keyIndex, lastPageByte,
 		byte(payloadLength), byte(payloadLength >> 8),
 		byte(pageIndex), byte(pageIndex >> 8),
+	}
+}
+
+// touchScreenImagePageHeader returns the image page header sequence used by Stream
+// Deck Plus for the touch screen.
+func touchScreenImagePageHeader(page int, x int, y int, width uint, height uint, payloadLength int, lastPage bool) []byte {
+
+	var lastPageByte byte
+	if lastPage {
+		lastPageByte = 1
+	}
+
+	return []byte{
+		0x02,                     // 0 Elgato secret flag value #1
+		0x0c,                     // 1 Elgato secret flag value #2
+		byte(x),                  // 2 x low byte
+		byte(x >> 8),             // 3 x high byte
+		byte(y),                  // 4 y low byte
+		byte(y >> 8),             // 5 y high byte
+		byte(width),              // 6 width low byte
+		byte(width >> 8),         // 7 width high byte
+		byte(height),             // 8 height low byte
+		byte(height >> 8),        // 9 height high byte
+		lastPageByte,             // 10 last page
+		byte(page),               // 12 page low byte
+		byte(page >> 8),          // 11 page high byte
+		byte(payloadLength),      // 14 payload length high byte
+		byte(payloadLength >> 8), // 13 payload length high byte
+		0x00,                     // 15 padding
 	}
 }
 
