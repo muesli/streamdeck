@@ -60,16 +60,25 @@ type Device struct {
 	DPI     uint
 	Padding uint
 
-	featureReportSize   int
-	firmwareOffset      int
-	keyStateOffset      int
-	translateKeyIndex   func(index, columns uint8) uint8
-	readKeys            func(*Device) (chan Key, error)
-	imagePageSize       int
-	imagePageHeaderSize int
-	flipImage           func(image.Image) image.Image
-	toImageFormat       func(image.Image) ([]byte, error)
-	imagePageHeader     func(pageIndex int, keyIndex uint8, payloadLength int, lastPage bool) []byte
+	ScreenWidth    uint
+	ScreenHeight   uint
+	ScreenSegments uint8
+
+	Knobs uint8
+
+	featureReportSize    int
+	firmwareOffset       int
+	keyStateOffset       int
+	translateKeyIndex    func(index, columns uint8) uint8
+	readKeys             func(*Device) (chan Key, error)
+	imagePageSize        int
+	imagePageHeaderSize  int
+	flipImage            func(image.Image) image.Image
+	toImageFormat        func(image.Image) ([]byte, error)
+	imagePageHeader      func(pageIndex int, keyIndex uint8, payloadLength int, lastPage bool) []byte
+	screenPageSize       int
+	screenPageHeaderSize int
+	screenPageHeader     func(page int, x int, y int, width uint, height uint, payloadLength int, lastPage bool) []byte
 
 	getFirmwareCommand   []byte
 	resetCommand         []byte
@@ -208,10 +217,14 @@ func Devices() ([]Device, error) {
 				Serial:               d.Serial,
 				Columns:              4,
 				Rows:                 2,
-				Keys:                 24,
+				Keys:                 30,
 				Pixels:               120,
 				DPI:                  124,
 				Padding:              16,
+				ScreenWidth:          800,
+				ScreenHeight:         100,
+				ScreenSegments:       4,
+				Knobs:                4,
 				featureReportSize:    32,
 				firmwareOffset:       6,
 				keyStateOffset:       4,
@@ -222,6 +235,9 @@ func Devices() ([]Device, error) {
 				imagePageHeader:      rev2ImagePageHeader,
 				flipImage:            noFlipping,
 				toImageFormat:        toJPEG,
+				screenPageSize:       1024,
+				screenPageHeaderSize: 16,
+				screenPageHeader:     touchScreenImagePageHeader,
 				getFirmwareCommand:   c_REV2_FIRMWARE,
 				resetCommand:         c_REV2_RESET,
 				setBrightnessCommand: c_REV2_BRIGHTNESS,
@@ -341,14 +357,12 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 		const INPUT_KNOB_USAGE_PRESS = uint8(0)
 		const INPUT_KNOB_USAGE_DIAL = uint8(1)
 		const INPUT_KNOB_STATE_OFFSET = uint8(5)
-		const INPUT_KNOB_COUNT = uint8(4)
 
 		const INPUT_TOUCH_USAGE_SHORT = uint8(1)
 		const INPUT_TOUCH_USAGE_LONG = uint8(2)
 		const INPUT_TOUCH_USAGE_SWIPE = uint8(3)
-		const INPUT_TOUCH_SEGMENTS_COUNT = uint8(4)
 
-		const INPUT_POSITION_TYPE_IO = uint8(1)
+		const INPUT_POSITION_TYPE_ID = uint8(1)
 		const INPUT_POSITION_KNOB_USAGE_ID = uint8(4)
 		const INPUT_POSITION_TOUCH_USAGE_ID = uint8(4)
 		const INPUT_POSITION_TOUCH_X_ID = uint8(6)
@@ -377,7 +391,7 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 			device.lastActionTime = time.Now()
 			device.sleepMutex.Unlock()
 
-			inputType := inputBuffer[INPUT_POSITION_TYPE_IO]
+			inputType := inputBuffer[INPUT_POSITION_TYPE_ID]
 
 			if inputType == INPUT_TYPE_ID_BUTTON {
 				for i := device.keyStateOffset; i < len(inputBuffer); i++ {
@@ -393,7 +407,7 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 			} else if inputType == INPUT_TYPE_ID_KNOB {
 				knobUsage := inputBuffer[INPUT_POSITION_KNOB_USAGE_ID]
 
-				for i := INPUT_KNOB_STATE_OFFSET; i < INPUT_KNOB_STATE_OFFSET+INPUT_KNOB_COUNT; i++ {
+				for i := INPUT_KNOB_STATE_OFFSET; i < INPUT_KNOB_STATE_OFFSET+device.Knobs; i++ {
 					keyValue := inputBuffer[i]
 
 					if knobUsage == INPUT_KNOB_USAGE_PRESS {
@@ -411,9 +425,9 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 						var keyIndex uint8
 
 						if int(keyValue)-128 > 0 { //left
-							keyIndex = i - INPUT_KNOB_STATE_OFFSET + device.Columns*device.Rows + INPUT_KNOB_COUNT
+							keyIndex = i - INPUT_KNOB_STATE_OFFSET + device.Columns*device.Rows + device.Knobs
 						} else { //right
-							keyIndex = i - INPUT_KNOB_STATE_OFFSET + device.Columns*device.Rows + 2*INPUT_KNOB_COUNT
+							keyIndex = i - INPUT_KNOB_STATE_OFFSET + device.Columns*device.Rows + 2*device.Knobs
 						}
 
 						kch <- Key{
@@ -427,15 +441,17 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 				touchUsage := inputBuffer[INPUT_POSITION_TOUCH_USAGE_ID]
 
 				x := binary.LittleEndian.Uint16(inputBuffer[INPUT_POSITION_TOUCH_X_ID:])
-				segment := uint8(math.Floor(float64(x / 200.0)))
+
+				segmentWidth := device.ScreenSegmentWidth()
+				segment := uint8(math.Floor(float64(uint(x) / segmentWidth)))
 
 				var keyIndex uint8
 
 				if touchUsage == INPUT_TOUCH_USAGE_SHORT {
-					keyIndex = device.Columns*device.Rows + 3*INPUT_KNOB_COUNT + segment
+					keyIndex = device.Columns*device.Rows + 3*device.Knobs + segment
 
 				} else if touchUsage == INPUT_TOUCH_USAGE_LONG {
-					keyIndex = device.Columns*device.Rows + 3*INPUT_KNOB_COUNT + INPUT_TOUCH_SEGMENTS_COUNT + segment
+					keyIndex = device.Columns*device.Rows + 3*device.Knobs + device.ScreenSegments + segment
 
 				} else if touchUsage == INPUT_TOUCH_USAGE_SWIPE {
 					x2 := binary.LittleEndian.Uint16(inputBuffer[INPUT_POSITION_TOUCH_X2_ID:])
@@ -443,9 +459,9 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 					stopSegment := uint8(math.Floor(float64(x2 / 40.0)))
 
 					if startSegment < stopSegment { //left to right
-						keyIndex = device.Columns*device.Rows + 3*INPUT_KNOB_COUNT + 2*INPUT_TOUCH_SEGMENTS_COUNT
+						keyIndex = device.Columns*device.Rows + 3*device.Knobs + 2*device.ScreenSegments
 					} else if startSegment > stopSegment { //right to left
-						keyIndex = device.Columns*device.Rows + 3*INPUT_KNOB_COUNT + 2*INPUT_TOUCH_SEGMENTS_COUNT + 1
+						keyIndex = device.Columns*device.Rows + 3*device.Knobs + 2*device.ScreenSegments + 1
 					} else {
 						continue
 					}
@@ -460,6 +476,22 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 	}()
 
 	return kch, nil
+}
+
+// ScreenSegmentWidth returns the width of a screen segment. Returns 0 if there are no segments.
+func (device *Device) ScreenSegmentWidth() uint {
+	if device.ScreenSegments == 0 {
+		return 0
+	}
+	return device.ScreenWidth / uint(device.ScreenSegments)
+}
+
+// ScreenSegmentHeight returns the width of a screen segment. Returns 0 if there are no segments.
+func (device *Device) ScreenSegmentHeight() uint {
+	if device.ScreenSegments == 0 {
+		return 0
+	}
+	return device.ScreenHeight
 }
 
 // Sleep puts the device asleep, waiting for a key event to wake it up.
@@ -629,44 +661,37 @@ func (d Device) SetImage(index uint8, img image.Image) error {
 // SetTouchScreenImage sets the image of a segment of the Stream Deck Plus touch screen. The provided image
 // needs to be in the correct resolution for the device. The index starts with
 // 0 to 3.
-func (d Device) SetTouchScreenImage(segmentIndex uint8, img image.Image) error {
+func (device Device) SetTouchScreenImage(segmentIndex uint8, img image.Image) error {
 
-	const TOUCHSCREEN_WIDTH = uint(800)
-	const TOUCHSCREEN_SEGMENT_WIDTH = uint(200)
-	const TOUCHSCREEN_HEIGHT = uint(100)
+	segmentWidth := device.ScreenSegmentWidth()
 
-	imageBytes, err := d.toImageFormat(d.flipImage(img))
+	imageBytes, err := device.toImageFormat(device.flipImage(img))
 
 	if err != nil {
 		return fmt.Errorf("cannot convert image data: %v", err)
 	}
 
-	const MAX_PACKET_SIZE = 1024
-	const PACKET_HEADER_LENGTH = 16
-	const MAX_PAYLOAD_SIZE = MAX_PACKET_SIZE - PACKET_HEADER_LENGTH
-
 	imageData := imageData{
-		image: imageBytes,
-		//pageSize: d.imagePageSize - d.imagePageHeaderSize,
-		pageSize: MAX_PAYLOAD_SIZE,
+		image:    imageBytes,
+		pageSize: device.screenPageSize - device.screenPageHeaderSize,
 	}
 
-	x := int(uint(segmentIndex) * TOUCHSCREEN_SEGMENT_WIDTH)
+	x := int(uint(segmentIndex) * segmentWidth)
 	y := 0
 
-	data := make([]byte, MAX_PACKET_SIZE)
+	data := make([]byte, device.screenPageSize)
 
 	var page int
 	var lastPage bool
 	for !lastPage {
 		var payload []byte
 		payload, lastPage = imageData.Page(page)
-		header := touchScreenImagePageHeader(page, x, y, TOUCHSCREEN_SEGMENT_WIDTH, TOUCHSCREEN_HEIGHT, len(payload), lastPage)
+		header := device.screenPageHeader(page, x, y, segmentWidth, device.ScreenSegmentHeight(), len(payload), lastPage)
 
 		copy(data, header)
 		copy(data[len(header):], payload)
 
-		_, err := d.device.Write(data)
+		_, err := device.device.Write(data)
 		if err != nil {
 			return fmt.Errorf("cannot write image page %d of %d (%d image bytes) %d bytes: %v",
 				page, imageData.PageCount(), imageData.Length(), len(data), err)
