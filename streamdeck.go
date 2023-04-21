@@ -233,7 +233,6 @@ func Devices() ([]Device, error) {
 				imagePageSize:        1024,
 				imagePageHeaderSize:  8,
 				imagePageHeader:      rev2ImagePageHeader,
-				flipImage:            noFlipping,
 				toImageFormat:        toJPEG,
 				screenPageSize:       1024,
 				screenPageHeaderSize: 16,
@@ -628,7 +627,7 @@ func (d Device) SetImage(index uint8, img image.Image) error {
 		return fmt.Errorf("supplied image has wrong dimensions, expected %[1]dx%[1]d pixels", d.Pixels)
 	}
 
-	imageBytes, err := d.toImageFormat(d.flipImage(img))
+	imageBytes, err := d.transformImage(img)
 	if err != nil {
 		return fmt.Errorf("cannot convert image data: %v", err)
 	}
@@ -668,7 +667,7 @@ func (device Device) SetTouchScreenImage(segmentIndex uint8, img image.Image) er
 
 	segmentWidth := device.ScreenSegmentWidth()
 
-	imageBytes, err := device.toImageFormat(device.flipImage(img))
+	imageBytes, err := device.transformImage(img)
 
 	if err != nil {
 		return fmt.Errorf("cannot convert image data: %v", err)
@@ -711,7 +710,7 @@ func (device Device) SetTouchScreenImage2(x int, y int, img image.Image) error {
 	width := uint(img.Bounds().Dx())
 	height := uint(img.Bounds().Dy())
 
-	imageBytes, err := device.toImageFormat(device.flipImage(img))
+	imageBytes, err := device.transformImage(img)
 
 	if err != nil {
 		return fmt.Errorf("cannot convert image data: %v", err)
@@ -790,9 +789,13 @@ func toRGBA(img image.Image) *image.RGBA {
 	return out
 }
 
-// noFlipping returns the given image without any flipping.
-func noFlipping(img image.Image) image.Image {
-	return img
+// transformImage transforms the image for sending it to the device.
+func (device *Device) transformImage(img image.Image) ([]byte, error) {
+	if device.flipImage != nil {
+		img = device.flipImage(img)
+	}
+
+	return device.toImageFormat(img)
 }
 
 // flipHorizontally returns the given image horizontally flipped.
