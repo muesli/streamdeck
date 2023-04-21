@@ -31,6 +31,7 @@ const (
 	PID_STREAMDECK_MINI     = 0x0063
 	PID_STREAMDECK_MINI_MK2 = 0x0090
 	PID_STREAMDECK_XL       = 0x006c
+	PID_STREAMDECK_PEDAL	= 0x0086
 )
 
 // Firmware command IDs.
@@ -54,6 +55,7 @@ type Device struct {
 	Columns uint8
 	Rows    uint8
 	Keys    uint8
+	Visuals bool
 	Pixels  uint
 	DPI     uint
 	Padding uint
@@ -109,6 +111,7 @@ func Devices() ([]Device, error) {
 				Columns:              5,
 				Rows:                 3,
 				Keys:                 15,
+				Visuals:              true,
 				Pixels:               72,
 				DPI:                  124,
 				Padding:              16,
@@ -132,6 +135,7 @@ func Devices() ([]Device, error) {
 				Columns:              3,
 				Rows:                 2,
 				Keys:                 6,
+				Visuals:              true,
 				Pixels:               80,
 				DPI:                  138,
 				Padding:              16,
@@ -155,6 +159,7 @@ func Devices() ([]Device, error) {
 				Columns:              5,
 				Rows:                 3,
 				Keys:                 15,
+				Visuals:              true,
 				Pixels:               72,
 				DPI:                  124,
 				Padding:              16,
@@ -178,6 +183,7 @@ func Devices() ([]Device, error) {
 				Columns:              8,
 				Rows:                 4,
 				Keys:                 32,
+				Visuals:              true,
 				Pixels:               96,
 				DPI:                  166,
 				Padding:              16,
@@ -193,6 +199,20 @@ func Devices() ([]Device, error) {
 				getFirmwareCommand:   c_REV2_FIRMWARE,
 				resetCommand:         c_REV2_RESET,
 				setBrightnessCommand: c_REV2_BRIGHTNESS,
+			}
+		case d.VendorID == VID_ELGATO && d.ProductID == PID_STREAMDECK_PEDAL:
+			dev = Device{
+				ID:                 d.Path,
+				Serial:             d.Serial,
+				Columns:            3,
+				Rows:               1,
+				Keys:               3,
+				Visuals:            false,
+				featureReportSize:  32,
+				firmwareOffset:     6,
+				keyStateOffset:     4,
+				translateKeyIndex:  identity,
+				getFirmwareCommand: c_REV2_FIRMWARE,
 			}
 		}
 
@@ -233,6 +253,10 @@ func (d Device) FirmwareVersion() (string, error) {
 
 // Resets the Stream Deck, clears all button images and shows the standby image.
 func (d Device) Reset() error {
+	if !d.Visuals {
+		return nil
+	}
+
 	return d.sendFeatureReport(d.resetCommand)
 }
 
@@ -375,6 +399,10 @@ func (d *Device) SetSleepTimeout(t time.Duration) {
 
 // Fade fades the brightness in or out.
 func (d *Device) Fade(start uint8, end uint8, duration time.Duration) error {
+	if !d.Visuals {
+		return nil
+	}
+
 	step := (float64(end) - float64(start)) / float64(duration/fadeDelay)
 	if step == math.Inf(1) || step == math.Inf(-1) {
 		return nil
@@ -396,6 +424,10 @@ func (d *Device) Fade(start uint8, end uint8, duration time.Duration) error {
 
 // SetBrightness sets the background lighting brightness from 0 to 100 percent.
 func (d *Device) SetBrightness(percent uint8) error {
+	if !d.Visuals {
+		return nil
+	}
+
 	if percent > 100 {
 		percent = 100
 	}
@@ -420,6 +452,10 @@ func (d *Device) SetBrightness(percent uint8) error {
 // needs to be in the correct resolution for the device. The index starts with
 // 0 being the top-left button.
 func (d Device) SetImage(index uint8, img image.Image) error {
+	if !d.Visuals {
+		return nil
+	}
+
 	if img.Bounds().Dy() != int(d.Pixels) ||
 		img.Bounds().Dx() != int(d.Pixels) {
 		return fmt.Errorf("supplied image has wrong dimensions, expected %[1]dx%[1]d pixels", d.Pixels)
