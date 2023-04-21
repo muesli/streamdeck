@@ -219,7 +219,7 @@ func Devices() ([]Device, error) {
 				Rows:                 2,
 				Keys:                 30,
 				Pixels:               120,
-				DPI:                  124,
+				DPI:                  180,
 				Padding:              16,
 				ScreenWidth:          800,
 				ScreenHeight:         100,
@@ -687,6 +687,46 @@ func (device Device) SetTouchScreenImage(segmentIndex uint8, img image.Image) er
 		var payload []byte
 		payload, lastPage = imageData.Page(page)
 		header := device.screenPageHeader(page, x, y, segmentWidth, device.ScreenSegmentHeight(), len(payload), lastPage)
+
+		copy(data, header)
+		copy(data[len(header):], payload)
+
+		_, err := device.device.Write(data)
+		if err != nil {
+			return fmt.Errorf("cannot write image page %d of %d (%d image bytes) %d bytes: %v",
+				page, imageData.PageCount(), imageData.Length(), len(data), err)
+		}
+
+		page++
+	}
+
+	return nil
+}
+
+func (device Device) SetTouchScreenImage2(x int, y int, img image.Image) error {
+
+	width := uint(img.Bounds().Dx())
+	height := uint(img.Bounds().Dy())
+
+	imageBytes, err := device.toImageFormat(device.flipImage(img))
+
+	if err != nil {
+		return fmt.Errorf("cannot convert image data: %v", err)
+	}
+
+	imageData := imageData{
+		image:    imageBytes,
+		pageSize: device.screenPageSize - device.screenPageHeaderSize,
+	}
+
+	data := make([]byte, device.screenPageSize)
+
+	var page int
+	var lastPage bool
+	for !lastPage {
+		var payload []byte
+		payload, lastPage = imageData.Page(page)
+		header := device.screenPageHeader(page, x, y, width, height, len(payload), lastPage)
 
 		copy(data, header)
 		copy(data[len(header):], payload)
