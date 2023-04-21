@@ -101,9 +101,9 @@ type Device struct {
 
 // Key holds the current status of a key on the device.
 type Key struct {
-	Index       uint8
-	Pressed     bool
-	NotHoldable bool
+	Index    uint8
+	Pressed  bool
+	Holdable bool
 }
 
 // Devices returns all attached Stream Decks.
@@ -335,8 +335,9 @@ func readKeysForButtonsOnlyInput(d *Device) (chan Key, error) {
 				keyIndex := uint8(i - d.keyStateOffset)
 				if keyBuffer[i] != d.keyState[keyIndex] {
 					kch <- Key{
-						Index:   d.translateKeyIndex(keyIndex, d.Columns),
-						Pressed: keyBuffer[i] == 1,
+						Index:    d.translateKeyIndex(keyIndex, d.Columns),
+						Pressed:  keyBuffer[i] == 1,
+						Holdable: true,
 					}
 				}
 			}
@@ -399,8 +400,9 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 					if inputBuffer[i] != device.keyState[keyIndex] {
 						device.keyState[keyIndex] = inputBuffer[i]
 						kch <- Key{
-							Index:   keyIndex,
-							Pressed: inputBuffer[i] == 1,
+							Index:    keyIndex,
+							Pressed:  inputBuffer[i] == 1,
+							Holdable: true,
 						}
 					}
 				}
@@ -417,8 +419,9 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 							device.keyState[keyIndex] = keyValue
 
 							kch <- Key{
-								Index:   keyIndex,
-								Pressed: keyValue == 1,
+								Index:    keyIndex,
+								Pressed:  keyValue == 1,
+								Holdable: true,
 							}
 						}
 					} else if knobUsage == INPUT_KNOB_USAGE_DIAL && inputBuffer[i] > 0 {
@@ -431,9 +434,9 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 						}
 
 						kch <- Key{
-							Index:       keyIndex,
-							Pressed:     true,
-							NotHoldable: true,
+							Index:    keyIndex,
+							Pressed:  true,
+							Holdable: false,
 						}
 					}
 				}
@@ -467,9 +470,9 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 					}
 				}
 				kch <- Key{
-					Index:       keyIndex,
-					Pressed:     true,
-					NotHoldable: true,
+					Index:    keyIndex,
+					Pressed:  true,
+					Holdable: false,
 				}
 			}
 		}
