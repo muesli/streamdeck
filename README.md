@@ -66,6 +66,67 @@ Reset the device:
 streamdeck-cli reset
 ```
 
+## Stream Deck Plus
+
+At the current state, the knobs and touch screen usage will be transformed to "normal button keys indexes".
+
+### Normal Buttons
+
+The 8 "normal" buttons have the key index 0 - 7 (top left to bottom right)
+
+### Touch Screen
+
+The touch screen is divided into four horizontal segments (matching the numbers of knobs):
+Segment index is from 0 - 3  (from left to right)
+
+The key indexes for touch screen usages are:
+
+Segment 0
+- Short touch: 20
+- Long touch:  24
+
+Segment 1
+- Short touch: 21
+- Long touch:  25
+
+Segment 2
+- Short touch: 22
+- Long touch:  26
+
+Segment 3
+- Short touch: 23
+- Long touch:  27
+
+All touch screen presses are not "holdable" like normal buttons.
+
+Swiping is mapped to:
+- From left to right: 28
+- From right to left: 29
+
+### Knobs
+
+The knobs usages will be mapped to key indexes as following (left to right):
+
+Knob 1
+- Press:       8 (holdable)
+- Left turn:  12
+- Right turn: 16
+
+Knob 2
+- Press:       9 (holdable)
+- Left turn:  13
+- Right turn: 17
+
+Knob 3
+- Press:      10 (holdable)
+- Left turn:  14
+- Right turn: 18
+
+Knob 4
+- Press:      11 (holdable)
+- Left turn:  15
+- Right turn: 19
+
 ## Feedback
 
 Got some feedback or suggestions? Please open an issue or drop me a note!
