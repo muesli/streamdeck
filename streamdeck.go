@@ -319,31 +319,15 @@ func readKeysForButtonsOnlyInput(d *Device) (chan Key, error) {
 				return
 			}
 
-			// don't trigger a key event if the device is asleep, but wake it
-			if d.asleep {
-				_ = d.Wake()
-
-				// reset state so no spurious key events get triggered
-				for i := d.keyStateOffset; i < len(keyBuffer); i++ {
-					keyBuffer[i] = 0
-				}
+			if d.isAwakened() {
+				resetKeysStates(d, keyBuffer)
+				// Dont trigger a key event, because the key awoke the device
 				continue
 			}
 
-			d.sleepMutex.Lock()
-			d.lastActionTime = time.Now()
-			d.sleepMutex.Unlock()
+			d.updateLastActionTimeToNow()
 
-			for i := d.keyStateOffset; i < len(keyBuffer); i++ {
-				keyIndex := uint8(i - d.keyStateOffset)
-				if keyBuffer[i] != d.keyState[keyIndex] {
-					kch <- Key{
-						Index:    d.translateKeyIndex(keyIndex, d.Columns),
-						Pressed:  keyBuffer[i] == 1,
-						Holdable: true,
-					}
-				}
-			}
+			d.sendNewButtonKeyEventsToChannel(keyBuffer, kch)
 		}
 	}()
 
@@ -380,35 +364,19 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 				return
 			}
 
-			// don't trigger a key event if the device is asleep, but wake it
-			if device.asleep {
-				_ = device.Wake()
-
-				// reset state so no spurious key events get triggered
-				for i := device.keyStateOffset; i < len(inputBuffer); i++ {
-					inputBuffer[i] = 0
-				}
+			if device.isAwakened() {
+				resetKeysStates(device, inputBuffer)
+				// Dont trigger a key event, because the key awoke the device
 				continue
 			}
 
-			device.sleepMutex.Lock()
-			device.lastActionTime = time.Now()
-			device.sleepMutex.Unlock()
+			device.updateLastActionTimeToNow()
 
 			inputType := inputBuffer[INPUT_POSITION_TYPE_ID]
 
 			if inputType == INPUT_TYPE_ID_BUTTON {
-				for i := device.keyStateOffset; i < len(inputBuffer); i++ {
-					keyIndex := uint8(i - device.keyStateOffset)
-					if inputBuffer[i] != device.keyState[keyIndex] {
-						device.keyState[keyIndex] = inputBuffer[i]
-						kch <- Key{
-							Index:    keyIndex,
-							Pressed:  inputBuffer[i] == 1,
-							Holdable: true,
-						}
-					}
-				}
+				device.sendNewButtonKeyEventsToChannel(inputBuffer, kch)
+
 			} else if inputType == INPUT_TYPE_ID_KNOB {
 				knobUsage := inputBuffer[INPUT_POSITION_KNOB_USAGE_ID]
 
@@ -482,6 +450,26 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 	}()
 
 	return kch, nil
+}
+
+func (device *Device) sendNewButtonKeyEventsToChannel(inputBuffer []byte, kch chan Key) {
+	for i := device.keyStateOffset; i < len(inputBuffer); i++ {
+		keyIndex := uint8(i - device.keyStateOffset)
+		if inputBuffer[i] != device.keyState[keyIndex] {
+			device.keyState[keyIndex] = inputBuffer[i]
+			kch <- Key{
+				Index:    keyIndex,
+				Pressed:  inputBuffer[i] == 1,
+				Holdable: true,
+			}
+		}
+	}
+}
+
+func (device *Device) updateLastActionTimeToNow() {
+	device.sleepMutex.Lock()
+	device.lastActionTime = time.Now()
+	device.sleepMutex.Unlock()
 }
 
 // ScreenSegmentWidth returns the width of a screen segment. Returns 0 if there are no segments.
@@ -800,6 +788,22 @@ func (device *Device) transformImage(img image.Image) ([]byte, error) {
 	}
 
 	return device.toImageFormat(img)
+}
+
+func (device *Device) isAwakened() bool {
+	if device.asleep {
+		_ = device.Wake()
+		return true
+	}
+
+	return false
+}
+
+func resetKeysStates(device *Device, inputBuffer []byte) {
+	// reset state so no spurious key events get triggered
+	for i := device.keyStateOffset; i < len(inputBuffer); i++ {
+		inputBuffer[i] = 0
+	}
 }
 
 // flipHorizontally returns the given image horizontally flipped.
