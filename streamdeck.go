@@ -33,6 +33,26 @@ const (
 	PID_STREAMDECK_MINI_MK2 = 0x0090
 	PID_STREAMDECK_XL       = 0x006c
 	PID_STREAMDECK_PLUS     = 0x0084
+
+	INPUT_TYPE_ID_BUTTON = uint8(0)
+	INPUT_TYPE_ID_TOUCH  = uint8(2)
+	INPUT_TYPE_ID_KNOB   = uint8(3)
+
+	INPUT_KNOB_USAGE_PRESS  = uint8(0)
+	INPUT_KNOB_USAGE_DIAL   = uint8(1)
+	INPUT_KNOB_STATE_OFFSET = uint8(5)
+
+	INPUT_TOUCH_USAGE_SHORT = uint8(1)
+	INPUT_TOUCH_USAGE_LONG  = uint8(2)
+	INPUT_TOUCH_USAGE_SWIPE = uint8(3)
+
+	INPUT_POSITION_TYPE_ID        = uint8(1)
+	INPUT_POSITION_KNOB_USAGE_ID  = uint8(4)
+	INPUT_POSITION_TOUCH_USAGE_ID = uint8(4)
+	INPUT_POSITION_TOUCH_X_ID     = uint8(6)
+	INPUT_POSITION_TOUCH_Y_ID     = uint8(8)
+	INPUT_POSITION_TOUCH_X2_ID    = uint8(10)
+	INPUT_POSITION_TOUCH_Y2_ID    = uint8(12)
 )
 
 // Firmware command IDs.
@@ -327,7 +347,7 @@ func readKeysForButtonsOnlyInput(d *Device) (chan Key, error) {
 
 			d.updateLastActionTimeToNow()
 
-			d.sendNewButtonKeyEventsToChannel(keyBuffer, kch)
+			d.sendButtonKeyEventsToChannel(keyBuffer, kch)
 		}
 	}()
 
@@ -338,25 +358,6 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 	kch := make(chan Key)
 	inputBuffer := make([]byte, 13)
 	go func() {
-		const INPUT_TYPE_ID_BUTTON = uint8(0)
-		const INPUT_TYPE_ID_TOUCH = uint8(2)
-		const INPUT_TYPE_ID_KNOB = uint8(3)
-
-		const INPUT_KNOB_USAGE_PRESS = uint8(0)
-		const INPUT_KNOB_USAGE_DIAL = uint8(1)
-		const INPUT_KNOB_STATE_OFFSET = uint8(5)
-
-		const INPUT_TOUCH_USAGE_SHORT = uint8(1)
-		const INPUT_TOUCH_USAGE_LONG = uint8(2)
-		const INPUT_TOUCH_USAGE_SWIPE = uint8(3)
-
-		const INPUT_POSITION_TYPE_ID = uint8(1)
-		const INPUT_POSITION_KNOB_USAGE_ID = uint8(4)
-		const INPUT_POSITION_TOUCH_USAGE_ID = uint8(4)
-		const INPUT_POSITION_TOUCH_X_ID = uint8(6)
-		const INPUT_POSITION_TOUCH_Y_ID = uint8(8)
-		const INPUT_POSITION_TOUCH_X2_ID = uint8(10)
-		const INPUT_POSITION_TOUCH_Y2_ID = uint8(12)
 
 		for {
 			if _, err := device.device.Read(inputBuffer); err != nil {
@@ -375,76 +376,13 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 			inputType := inputBuffer[INPUT_POSITION_TYPE_ID]
 
 			if inputType == INPUT_TYPE_ID_BUTTON {
-				device.sendNewButtonKeyEventsToChannel(inputBuffer, kch)
+				device.sendButtonKeyEventsToChannel(inputBuffer, kch)
 
 			} else if inputType == INPUT_TYPE_ID_KNOB {
-				knobUsage := inputBuffer[INPUT_POSITION_KNOB_USAGE_ID]
+				device.sendKnobEventsToChannel(inputBuffer, kch)
 
-				for i := INPUT_KNOB_STATE_OFFSET; i < INPUT_KNOB_STATE_OFFSET+device.Knobs; i++ {
-					keyValue := inputBuffer[i]
-
-					if knobUsage == INPUT_KNOB_USAGE_PRESS {
-						keyIndex := i - INPUT_KNOB_STATE_OFFSET + device.Columns*device.Rows
-
-						if keyValue != device.keyState[keyIndex] {
-							device.keyState[keyIndex] = keyValue
-
-							kch <- Key{
-								Index:    keyIndex,
-								Pressed:  keyValue == 1,
-								Holdable: true,
-							}
-						}
-					} else if knobUsage == INPUT_KNOB_USAGE_DIAL && inputBuffer[i] > 0 {
-						var keyIndex uint8
-
-						if int(keyValue)-128 > 0 { //left
-							keyIndex = i - INPUT_KNOB_STATE_OFFSET + device.Columns*device.Rows + device.Knobs
-						} else { //right
-							keyIndex = i - INPUT_KNOB_STATE_OFFSET + device.Columns*device.Rows + 2*device.Knobs
-						}
-
-						kch <- Key{
-							Index:    keyIndex,
-							Pressed:  true,
-							Holdable: false,
-						}
-					}
-				}
 			} else if inputType == INPUT_TYPE_ID_TOUCH {
-				touchUsage := inputBuffer[INPUT_POSITION_TOUCH_USAGE_ID]
-
-				x := binary.LittleEndian.Uint16(inputBuffer[INPUT_POSITION_TOUCH_X_ID:])
-
-				segmentWidth := device.ScreenSegmentWidth()
-				segment := uint8(math.Floor(float64(uint(x) / segmentWidth)))
-
-				var keyIndex uint8
-
-				if touchUsage == INPUT_TOUCH_USAGE_SHORT {
-					keyIndex = device.Columns*device.Rows + 3*device.Knobs + segment
-
-				} else if touchUsage == INPUT_TOUCH_USAGE_LONG {
-					keyIndex = device.Columns*device.Rows + 3*device.Knobs + device.ScreenSegments + segment
-
-				} else if touchUsage == INPUT_TOUCH_USAGE_SWIPE {
-					x2 := binary.LittleEndian.Uint16(inputBuffer[INPUT_POSITION_TOUCH_X2_ID:])
-					startSegment := uint8(math.Floor(float64(x / 40.0)))
-					stopSegment := uint8(math.Floor(float64(x2 / 40.0)))
-
-					if startSegment < stopSegment { //left to right
-						keyIndex = device.Columns*device.Rows + 3*device.Knobs + 2*device.ScreenSegments
-					} else if startSegment > stopSegment { //right to left
-						keyIndex = device.Columns*device.Rows + 3*device.Knobs + 2*device.ScreenSegments + 1
-					} else {
-						continue
-					}
-				}
-				kch <- Key{
-					Index:    keyIndex,
-					Pressed:  true,
-					Holdable: false,
-				}
+				device.sendTouchEventsToChannel(inputBuffer, kch)
 			}
 		}
 	}()
@@ -452,7 +390,79 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 	return kch, nil
 }
 
-func (device *Device) sendNewButtonKeyEventsToChannel(inputBuffer []byte, kch chan Key) {
+func (device *Device) sendTouchEventsToChannel(inputBuffer []byte, kch chan Key) {
+	touchUsage := inputBuffer[INPUT_POSITION_TOUCH_USAGE_ID]
+
+	x := binary.LittleEndian.Uint16(inputBuffer[INPUT_POSITION_TOUCH_X_ID:])
+
+	segmentWidth := device.ScreenSegmentWidth()
+	segment := uint8(math.Floor(float64(uint(x) / segmentWidth)))
+
+	var keyIndex uint8
+
+	if touchUsage == INPUT_TOUCH_USAGE_SHORT {
+		keyIndex = device.Columns*device.Rows + 3*device.Knobs + segment
+
+	} else if touchUsage == INPUT_TOUCH_USAGE_LONG {
+		keyIndex = device.Columns*device.Rows + 3*device.Knobs + device.ScreenSegments + segment
+
+	} else if touchUsage == INPUT_TOUCH_USAGE_SWIPE {
+		x2 := binary.LittleEndian.Uint16(inputBuffer[INPUT_POSITION_TOUCH_X2_ID:])
+		startSegment := uint8(math.Floor(float64(x / 40.0)))
+		stopSegment := uint8(math.Floor(float64(x2 / 40.0)))
+
+		if startSegment < stopSegment { //left to right
+			keyIndex = device.Columns*device.Rows + 3*device.Knobs + 2*device.ScreenSegments
+		} else if startSegment > stopSegment { //right to left
+			keyIndex = device.Columns*device.Rows + 3*device.Knobs + 2*device.ScreenSegments + 1
+		} else {
+			return
+		}
+	}
+	kch <- Key{
+		Index:    keyIndex,
+		Pressed:  true,
+		Holdable: false,
+	}
+}
+
+func (device *Device) sendKnobEventsToChannel(inputBuffer []byte, kch chan Key) {
+	knobUsage := inputBuffer[INPUT_POSITION_KNOB_USAGE_ID]
+
+	for i := INPUT_KNOB_STATE_OFFSET; i < INPUT_KNOB_STATE_OFFSET+device.Knobs; i++ {
+		keyValue := inputBuffer[i]
+
+		if knobUsage == INPUT_KNOB_USAGE_PRESS {
+			keyIndex := i - INPUT_KNOB_STATE_OFFSET + device.Columns*device.Rows
+
+			if keyValue != device.keyState[keyIndex] {
+				device.keyState[keyIndex] = keyValue
+
+				kch <- Key{
+					Index:    keyIndex,
+					Pressed:  keyValue == 1,
+					Holdable: true,
+				}
+			}
+		} else if knobUsage == INPUT_KNOB_USAGE_DIAL && inputBuffer[i] > 0 {
+			var keyIndex uint8
+
+			if int(keyValue)-128 > 0 { //left turn
+				keyIndex = i - INPUT_KNOB_STATE_OFFSET + device.Columns*device.Rows + device.Knobs
+			} else { //right turn
+				keyIndex = i - INPUT_KNOB_STATE_OFFSET + device.Columns*device.Rows + 2*device.Knobs
+			}
+
+			kch <- Key{
+				Index:    keyIndex,
+				Pressed:  true,
+				Holdable: false,
+			}
+		}
+	}
+}
+
+func (device *Device) sendButtonKeyEventsToChannel(inputBuffer []byte, kch chan Key) {
 	for i := device.keyStateOffset; i < len(inputBuffer); i++ {
 		keyIndex := uint8(i - device.keyStateOffset)
 		if inputBuffer[i] != device.keyState[keyIndex] {
