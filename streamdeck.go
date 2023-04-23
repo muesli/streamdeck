@@ -80,11 +80,11 @@ type Device struct {
 	DPI     uint
 	Padding uint
 
-	ScreenWidth         uint
-	ScreenHeight        uint
-	ScreenVerticalDPI   uint
-	ScreenHorizontalDPI uint
-	ScreenSegments      uint8
+	ScreenWidth          uint
+	ScreenHeight         uint
+	ScreenVerticalDPI    uint
+	ScreenHorizontalDPI  uint
+	ScreenSegmentsAmount uint8
 
 	Knobs uint8
 
@@ -100,7 +100,7 @@ type Device struct {
 	imagePageHeader      func(pageIndex int, keyIndex uint8, payloadLength int, lastPage bool) []byte
 	screenPageSize       int
 	screenPageHeaderSize int
-	screenPageHeader     func(page int, x int, y int, width uint, height uint, payloadLength int, lastPage bool) []byte
+	screenPageHeader     func(page int, position image.Point, width uint, height uint, payloadLength int, lastPage bool) []byte
 
 	getFirmwareCommand   []byte
 	resetCommand         []byte
@@ -247,7 +247,7 @@ func Devices() ([]Device, error) {
 				ScreenHeight:         100,
 				ScreenVerticalDPI:    181, //14mm and 100px
 				ScreenHorizontalDPI:  188, //108mm and 800px
-				ScreenSegments:       4,
+				ScreenSegmentsAmount: 4,
 				Knobs:                4,
 				featureReportSize:    32,
 				firmwareOffset:       6,
@@ -404,7 +404,7 @@ func (device *Device) sendTouchEventsToChannel(inputBuffer []byte, kch chan Key)
 		keyIndex = device.Columns*device.Rows + 3*device.Knobs + segment
 
 	} else if touchUsage == INPUT_TOUCH_USAGE_LONG {
-		keyIndex = device.Columns*device.Rows + 3*device.Knobs + device.ScreenSegments + segment
+		keyIndex = device.Columns*device.Rows + 3*device.Knobs + device.ScreenSegmentsAmount + segment
 
 	} else if touchUsage == INPUT_TOUCH_USAGE_SWIPE {
 		x2 := binary.LittleEndian.Uint16(inputBuffer[INPUT_POSITION_TOUCH_X2_ID:])
@@ -412,9 +412,9 @@ func (device *Device) sendTouchEventsToChannel(inputBuffer []byte, kch chan Key)
 		stopSegment := uint8(math.Floor(float64(x2 / 40.0)))
 
 		if startSegment < stopSegment { //left to right
-			keyIndex = device.Columns*device.Rows + 3*device.Knobs + 2*device.ScreenSegments
+			keyIndex = device.Columns*device.Rows + 3*device.Knobs + 2*device.ScreenSegmentsAmount
 		} else if startSegment > stopSegment { //right to left
-			keyIndex = device.Columns*device.Rows + 3*device.Knobs + 2*device.ScreenSegments + 1
+			keyIndex = device.Columns*device.Rows + 3*device.Knobs + 2*device.ScreenSegmentsAmount + 1
 		} else {
 			return
 		}
@@ -484,15 +484,15 @@ func (device *Device) updateLastActionTimeToNow() {
 
 // ScreenSegmentWidth returns the width of a screen segment. Returns 0 if there are no segments.
 func (device *Device) ScreenSegmentWidth() uint {
-	if device.ScreenSegments == 0 {
+	if device.ScreenSegmentsAmount == 0 {
 		return 0
 	}
-	return device.ScreenWidth / uint(device.ScreenSegments)
+	return device.ScreenWidth / uint(device.ScreenSegmentsAmount)
 }
 
 // ScreenSegmentHeight returns the width of a screen segment. Returns 0 if there are no segments.
 func (device *Device) ScreenSegmentHeight() uint {
-	if device.ScreenSegments == 0 {
+	if device.ScreenSegmentsAmount == 0 {
 		return 0
 	}
 	return device.ScreenHeight
@@ -662,55 +662,22 @@ func (d Device) SetImage(index uint8, img image.Image) error {
 	return nil
 }
 
-// SetTouchScreenImage sets the image of a segment of the Stream Deck Plus touch screen. The provided image
+// SetTouchScreenSegmentImage sets the image of a segment of the Stream Deck Plus touch screen. The provided image
 // needs to be in the correct resolution for the device. The index starts with
-// 0 to 3.
-func (device Device) SetTouchScreenImage(segmentIndex uint8, img image.Image) error {
+// 0 to Device.ScreenSegmentsAmount-1.
+func (device Device) SetTouchScreenSegmentImage(segmentIndex uint8, img image.Image) error {
 
-	segmentWidth := device.ScreenSegmentWidth()
-
-	imageBytes, err := device.transformImage(img)
-
-	if err != nil {
-		return fmt.Errorf("cannot convert image data: %v", err)
+	position := image.Point{
+		X: int(uint(segmentIndex) * device.ScreenSegmentWidth()),
+		Y: 0,
 	}
 
-	imageData := imageData{
-		image:    imageBytes,
-		pageSize: device.screenPageSize - device.screenPageHeaderSize,
-	}
-
-	x := int(uint(segmentIndex) * segmentWidth)
-	y := 0
-
-	data := make([]byte, device.screenPageSize)
-
-	var page int
-	var lastPage bool
-	for !lastPage {
-		var payload []byte
-		payload, lastPage = imageData.Page(page)
-		header := device.screenPageHeader(page, x, y, segmentWidth, device.ScreenSegmentHeight(), len(payload), lastPage)
-
-		copy(data, header)
-		copy(data[len(header):], payload)
-
-		_, err := device.device.Write(data)
-		if err != nil {
-			return fmt.Errorf("cannot write image page %d of %d (%d image bytes) %d bytes: %v",
-				page, imageData.PageCount(), imageData.Length(), len(data), err)
-		}
-
-		page++
-	}
-
-	return nil
+	return device.SetTouchScreenImage(position, device.ScreenSegmentWidth(), device.ScreenSegmentHeight(), img)
 }
 
-func (device Device) SetTouchScreenImage2(x int, y int, img image.Image) error {
-
-	width := uint(img.Bounds().Dx())
-	height := uint(img.Bounds().Dy())
+// SetTouchScreenImage sets the image of the Stream Deck Plus touch screen at the given point. The provided image
+// needs to be in the correct resolution for the device.
+func (device Device) SetTouchScreenImage(position image.Point, width uint, height uint, img image.Image) error {
 
 	imageBytes, err := device.transformImage(img)
 
@@ -730,7 +697,7 @@ func (device Device) SetTouchScreenImage2(x int, y int, img image.Image) error {
 	for !lastPage {
 		var payload []byte
 		payload, lastPage = imageData.Page(page)
-		header := device.screenPageHeader(page, x, y, width, height, len(payload), lastPage)
+		header := device.screenPageHeader(page, position, width, height, len(payload), lastPage)
 
 		copy(data, header)
 		copy(data[len(header):], payload)
@@ -963,7 +930,7 @@ func rev2ImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastP
 
 // touchScreenImagePageHeader returns the image page header sequence used by Stream
 // Deck Plus for the touch screen.
-func touchScreenImagePageHeader(page int, x int, y int, width uint, height uint, payloadLength int, lastPage bool) []byte {
+func touchScreenImagePageHeader(page int, position image.Point, width uint, height uint, payloadLength int, lastPage bool) []byte {
 
 	var lastPageByte byte
 	if lastPage {
@@ -973,10 +940,10 @@ func touchScreenImagePageHeader(page int, x int, y int, width uint, height uint,
 	return []byte{
 		0x02,                     // 0 Elgato secret flag value #1
 		0x0c,                     // 1 Elgato secret flag value #2
-		byte(x),                  // 2 x low byte
-		byte(x >> 8),             // 3 x high byte
-		byte(y),                  // 4 y low byte
-		byte(y >> 8),             // 5 y high byte
+		byte(position.X),         // 2 x low byte
+		byte(position.X >> 8),    // 3 x high byte
+		byte(position.Y),         // 4 y low byte
+		byte(position.Y >> 8),    // 5 y high byte
 		byte(width),              // 6 width low byte
 		byte(width >> 8),         // 7 width high byte
 		byte(height),             // 8 height low byte
