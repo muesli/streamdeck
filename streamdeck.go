@@ -358,7 +358,6 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 	kch := make(chan Key)
 	inputBuffer := make([]byte, 13)
 	go func() {
-
 		for {
 			if _, err := device.device.Read(inputBuffer); err != nil {
 				close(kch)
@@ -377,10 +376,8 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 
 			if inputType == INPUT_TYPE_ID_BUTTON {
 				device.sendButtonKeyEventsToChannel(inputBuffer, kch)
-
 			} else if inputType == INPUT_TYPE_ID_KNOB {
 				device.sendKnobEventsToChannel(inputBuffer, kch)
-
 			} else if inputType == INPUT_TYPE_ID_TOUCH {
 				device.sendTouchEventsToChannel(inputBuffer, kch)
 			}
@@ -390,31 +387,29 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 	return kch, nil
 }
 
-func (device *Device) sendTouchEventsToChannel(inputBuffer []byte, kch chan Key) {
+func (d *Device) sendTouchEventsToChannel(inputBuffer []byte, kch chan Key) {
 	touchUsage := inputBuffer[INPUT_POSITION_TOUCH_USAGE_ID]
 
 	x := binary.LittleEndian.Uint16(inputBuffer[INPUT_POSITION_TOUCH_X_ID:])
 
-	segmentWidth := device.ScreenSegmentWidth()
-	segment := uint8(math.Floor(float64(uint(x) / segmentWidth)))
+	segmentWidth := d.ScreenSegmentWidth()
+	segment := uint8(math.Floor(float64(x) / float64(segmentWidth)))
 
 	var keyIndex uint8
 
 	if touchUsage == INPUT_TOUCH_USAGE_SHORT {
-		keyIndex = device.Columns*device.Rows + 3*device.Knobs + segment
-
+		keyIndex = d.Columns*d.Rows + 3*d.Knobs + segment
 	} else if touchUsage == INPUT_TOUCH_USAGE_LONG {
-		keyIndex = device.Columns*device.Rows + 3*device.Knobs + device.ScreenSegmentsAmount + segment
-
+		keyIndex = d.Columns*d.Rows + 3*d.Knobs + d.ScreenSegmentsAmount + segment
 	} else if touchUsage == INPUT_TOUCH_USAGE_SWIPE {
 		x2 := binary.LittleEndian.Uint16(inputBuffer[INPUT_POSITION_TOUCH_X2_ID:])
-		startSegment := uint8(math.Floor(float64(x / 40.0)))
-		stopSegment := uint8(math.Floor(float64(x2 / 40.0)))
+		startSegment := uint8(math.Floor(float64(x) / 40.0))
+		stopSegment := uint8(math.Floor(float64(x2) / 40.0))
 
 		if startSegment < stopSegment { //left to right
-			keyIndex = device.Columns*device.Rows + 3*device.Knobs + 2*device.ScreenSegmentsAmount
+			keyIndex = d.Columns*d.Rows + 3*d.Knobs + 2*d.ScreenSegmentsAmount
 		} else if startSegment > stopSegment { //right to left
-			keyIndex = device.Columns*device.Rows + 3*device.Knobs + 2*device.ScreenSegmentsAmount + 1
+			keyIndex = d.Columns*d.Rows + 3*d.Knobs + 2*d.ScreenSegmentsAmount + 1
 		} else {
 			return
 		}
@@ -426,17 +421,17 @@ func (device *Device) sendTouchEventsToChannel(inputBuffer []byte, kch chan Key)
 	}
 }
 
-func (device *Device) sendKnobEventsToChannel(inputBuffer []byte, kch chan Key) {
+func (d *Device) sendKnobEventsToChannel(inputBuffer []byte, kch chan Key) {
 	knobUsage := inputBuffer[INPUT_POSITION_KNOB_USAGE_ID]
 
-	for i := INPUT_KNOB_STATE_OFFSET; i < INPUT_KNOB_STATE_OFFSET+device.Knobs; i++ {
+	for i := INPUT_KNOB_STATE_OFFSET; i < INPUT_KNOB_STATE_OFFSET+d.Knobs; i++ {
 		keyValue := inputBuffer[i]
 
 		if knobUsage == INPUT_KNOB_USAGE_PRESS {
-			keyIndex := i - INPUT_KNOB_STATE_OFFSET + device.Columns*device.Rows
+			keyIndex := i - INPUT_KNOB_STATE_OFFSET + d.Columns*d.Rows
 
-			if keyValue != device.keyState[keyIndex] {
-				device.keyState[keyIndex] = keyValue
+			if keyValue != d.keyState[keyIndex] {
+				d.keyState[keyIndex] = keyValue
 
 				kch <- Key{
 					Index:    keyIndex,
@@ -448,9 +443,9 @@ func (device *Device) sendKnobEventsToChannel(inputBuffer []byte, kch chan Key) 
 			var keyIndex uint8
 
 			if int(keyValue)-128 > 0 { //left turn
-				keyIndex = i - INPUT_KNOB_STATE_OFFSET + device.Columns*device.Rows + device.Knobs
+				keyIndex = i - INPUT_KNOB_STATE_OFFSET + d.Columns*d.Rows + d.Knobs
 			} else { //right turn
-				keyIndex = i - INPUT_KNOB_STATE_OFFSET + device.Columns*device.Rows + 2*device.Knobs
+				keyIndex = i - INPUT_KNOB_STATE_OFFSET + d.Columns*d.Rows + 2*d.Knobs
 			}
 
 			kch <- Key{
@@ -462,11 +457,11 @@ func (device *Device) sendKnobEventsToChannel(inputBuffer []byte, kch chan Key) 
 	}
 }
 
-func (device *Device) sendButtonKeyEventsToChannel(inputBuffer []byte, kch chan Key) {
-	for i := device.keyStateOffset; i < len(inputBuffer); i++ {
-		keyIndex := uint8(i - device.keyStateOffset)
-		if inputBuffer[i] != device.keyState[keyIndex] {
-			device.keyState[keyIndex] = inputBuffer[i]
+func (d *Device) sendButtonKeyEventsToChannel(inputBuffer []byte, kch chan Key) {
+	for i := d.keyStateOffset; i < len(inputBuffer); i++ {
+		keyIndex := uint8(i - d.keyStateOffset)
+		if inputBuffer[i] != d.keyState[keyIndex] {
+			d.keyState[keyIndex] = inputBuffer[i]
 			kch <- Key{
 				Index:    keyIndex,
 				Pressed:  inputBuffer[i] == 1,
@@ -476,26 +471,26 @@ func (device *Device) sendButtonKeyEventsToChannel(inputBuffer []byte, kch chan 
 	}
 }
 
-func (device *Device) updateLastActionTimeToNow() {
-	device.sleepMutex.Lock()
-	device.lastActionTime = time.Now()
-	device.sleepMutex.Unlock()
+func (d *Device) updateLastActionTimeToNow() {
+	d.sleepMutex.Lock()
+	d.lastActionTime = time.Now()
+	d.sleepMutex.Unlock()
 }
 
 // ScreenSegmentWidth returns the width of a screen segment. Returns 0 if there are no segments.
-func (device *Device) ScreenSegmentWidth() uint {
-	if device.ScreenSegmentsAmount == 0 {
+func (d *Device) ScreenSegmentWidth() uint {
+	if d.ScreenSegmentsAmount == 0 {
 		return 0
 	}
-	return device.ScreenWidth / uint(device.ScreenSegmentsAmount)
+	return d.ScreenWidth / uint(d.ScreenSegmentsAmount)
 }
 
 // ScreenSegmentHeight returns the width of a screen segment. Returns 0 if there are no segments.
-func (device *Device) ScreenSegmentHeight() uint {
-	if device.ScreenSegmentsAmount == 0 {
+func (d *Device) ScreenSegmentHeight() uint {
+	if d.ScreenSegmentsAmount == 0 {
 		return 0
 	}
-	return device.ScreenHeight
+	return d.ScreenHeight
 }
 
 // Sleep puts the device asleep, waiting for a key event to wake it up.
@@ -665,21 +660,19 @@ func (d Device) SetImage(index uint8, img image.Image) error {
 // SetTouchScreenSegmentImage sets the image of a segment of the Stream Deck Plus touch screen. The provided image
 // needs to be in the correct resolution for the device. The index starts with
 // 0 to Device.ScreenSegmentsAmount-1.
-func (device Device) SetTouchScreenSegmentImage(segmentIndex uint8, img image.Image) error {
-
+func (d Device) SetTouchScreenSegmentImage(segmentIndex uint8, img image.Image) error {
 	position := image.Point{
-		X: int(uint(segmentIndex) * device.ScreenSegmentWidth()),
+		X: int(uint(segmentIndex) * d.ScreenSegmentWidth()),
 		Y: 0,
 	}
 
-	return device.SetTouchScreenImage(position, device.ScreenSegmentWidth(), device.ScreenSegmentHeight(), img)
+	return d.SetTouchScreenImage(position, d.ScreenSegmentWidth(), d.ScreenSegmentHeight(), img)
 }
 
 // SetTouchScreenImage sets the image of the Stream Deck Plus touch screen at the given point. The provided image
 // needs to be in the correct resolution for the device.
-func (device Device) SetTouchScreenImage(position image.Point, width uint, height uint, img image.Image) error {
-
-	imageBytes, err := device.transformImage(img)
+func (d Device) SetTouchScreenImage(position image.Point, width uint, height uint, img image.Image) error {
+	imageBytes, err := d.transformImage(img)
 
 	if err != nil {
 		return fmt.Errorf("cannot convert image data: %v", err)
@@ -687,22 +680,22 @@ func (device Device) SetTouchScreenImage(position image.Point, width uint, heigh
 
 	imageData := imageData{
 		image:    imageBytes,
-		pageSize: device.screenPageSize - device.screenPageHeaderSize,
+		pageSize: d.screenPageSize - d.screenPageHeaderSize,
 	}
 
-	data := make([]byte, device.screenPageSize)
+	data := make([]byte, d.screenPageSize)
 
 	var page int
 	var lastPage bool
 	for !lastPage {
 		var payload []byte
 		payload, lastPage = imageData.Page(page)
-		header := device.screenPageHeader(page, position, width, height, len(payload), lastPage)
+		header := d.screenPageHeader(page, position, width, height, len(payload), lastPage)
 
 		copy(data, header)
 		copy(data[len(header):], payload)
 
-		_, err := device.device.Write(data)
+		_, err := d.device.Write(data)
 		if err != nil {
 			return fmt.Errorf("cannot write image page %d of %d (%d image bytes) %d bytes: %v",
 				page, imageData.PageCount(), imageData.Length(), len(data), err)
@@ -759,17 +752,17 @@ func toRGBA(img image.Image) *image.RGBA {
 }
 
 // transformImage transforms the image for sending it to the device.
-func (device *Device) transformImage(img image.Image) ([]byte, error) {
-	if device.flipImage != nil {
-		img = device.flipImage(img)
+func (d *Device) transformImage(img image.Image) ([]byte, error) {
+	if d.flipImage != nil {
+		img = d.flipImage(img)
 	}
 
-	return device.toImageFormat(img)
+	return d.toImageFormat(img)
 }
 
-func (device *Device) isAwakened() bool {
-	if device.asleep {
-		_ = device.Wake()
+func (d *Device) isAwakened() bool {
+	if d.asleep {
+		_ = d.Wake()
 		return true
 	}
 
@@ -931,7 +924,6 @@ func rev2ImagePageHeader(pageIndex int, keyIndex uint8, payloadLength int, lastP
 // touchScreenImagePageHeader returns the image page header sequence used by Stream
 // Deck Plus for the touch screen.
 func touchScreenImagePageHeader(page int, position image.Point, width uint, height uint, payloadLength int, lastPage bool) []byte {
-
 	var lastPageByte byte
 	if lastPage {
 		lastPageByte = 1
