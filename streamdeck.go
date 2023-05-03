@@ -339,7 +339,8 @@ func readKeysForButtonsOnlyInput(d *Device) (chan Key, error) {
 				return
 			}
 
-			if d.isAwakened() {
+			if d.Asleep() {
+				_ = d.Wake()
 				resetKeysStates(d, keyBuffer)
 				// Dont trigger a key event, because the key awoke the device
 				continue
@@ -364,7 +365,8 @@ func readKeysForMultipleInputTypes(device *Device) (chan Key, error) {
 				return
 			}
 
-			if device.isAwakened() {
+			if device.Asleep() {
+				_ = device.Wake()
 				resetKeysStates(device, inputBuffer)
 				// Dont trigger a key event, because the key awoke the device
 				continue
@@ -758,15 +760,6 @@ func (d *Device) transformImage(img image.Image) ([]byte, error) {
 	}
 
 	return d.toImageFormat(img)
-}
-
-func (d *Device) isAwakened() bool {
-	if d.asleep {
-		_ = d.Wake()
-		return true
-	}
-
-	return false
 }
 
 func resetKeysStates(device *Device, inputBuffer []byte) {
