@@ -6,7 +6,7 @@
 [![Go ReportCard](https://goreportcard.com/badge/github.com/muesli/streamdeck?style=for-the-badge)](https://goreportcard.com/report/muesli/streamdeck)
 [![Go Doc](https://img.shields.io/badge/godoc-reference-blue.svg?style=for-the-badge)](https://pkg.go.dev/github.com/muesli/streamdeck)
 
-A CLI application and Go library to control your Elgato Stream Deck on Linux.
+A Go library and CLI to control your Elgato Stream Deck on Linux.
 
 If you're looking for a complete Linux service to control your StreamDeck, check
 out [Deckmaster](https://github.com/muesli/deckmaster), which is based on this
@@ -66,20 +66,47 @@ Reset the device:
 streamdeck-cli reset
 ```
 
-## Stream Deck Plus
+## Hardware Support
 
-At the current state, the knobs and touch screen usage will be transformed to "normal button keys indexes".
+<details>
+<summary>Stream Deck Mini</summary>
 
-### Normal Buttons
+#### Regular Buttons
 
-The 8 "normal" buttons have the key index 0 - 7 (top left to bottom right)
+The 6 regular buttons are mapped to key index 0 - 5 (top left to bottom right).
+</details>
 
-### Touch Screen
+<details>
+<summary>Stream Deck (including MK.2)</summary>
 
-The touch screen is divided into four horizontal segments (matching the numbers of knobs):
-Segment index is from 0 - 3  (from left to right)
+#### Regular Buttons
 
-The key indexes for touch screen usages are:
+The 15 regular buttons are mapped to key index 0 - 14 (top left to bottom right).
+</details>
+
+<details>
+<summary>Stream Deck XL</summary>
+
+#### Regular Buttons
+
+The 32 regular buttons are mapped to key index 0 - 31 (top left to bottom right).
+</details>
+
+<details>
+<summary>Stream Deck Plus</summary>
+
+Knobs and touchscreen usage are mapped to regular button key indexes.
+
+#### Regular Buttons
+
+The 8 regular buttons are mapped to key index 0 - 7 (top left to bottom right).
+
+#### Touchscreen
+
+The touchscreen is divided into four horizontal segments (matching the
+number of buttons and knobs per row) with index 0 - 3 (from left to right).
+
+The key indexes for touchscreen usage are:
 
 Segment 0
 - Short touch: 20
@@ -97,13 +124,13 @@ Segment 3
 - Short touch: 23
 - Long touch:  27
 
-All touch screen presses are not "holdable" like normal buttons.
+All touchscreen presses are not "holdable" like normal buttons.
 
 Swiping is mapped to:
 - From left to right: 28
 - From right to left: 29
 
-### Knobs
+#### Knobs
 
 The knobs usages will be mapped to key indexes as following (left to right):
 
@@ -126,6 +153,7 @@ Knob 4
 - Press:      11 (holdable)
 - Left turn:  15
 - Right turn: 19
+</details>
 
 ## Feedback
 
