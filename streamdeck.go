@@ -80,11 +80,11 @@ type Device struct {
 	DPI     uint
 	Padding uint
 
-	ScreenWidth          uint
-	ScreenHeight         uint
-	ScreenVerticalDPI    uint
-	ScreenHorizontalDPI  uint
-	ScreenSegmentsAmount uint8
+	ScreenWidth         uint
+	ScreenHeight        uint
+	ScreenVerticalDPI   uint
+	ScreenHorizontalDPI uint
+	ScreenSegments      uint8
 
 	Knobs uint8
 
@@ -247,7 +247,7 @@ func Devices() ([]Device, error) {
 				ScreenHeight:         100,
 				ScreenVerticalDPI:    181, //14mm and 100px
 				ScreenHorizontalDPI:  188, //108mm and 800px
-				ScreenSegmentsAmount: 4,
+				ScreenSegments:       4,
 				Knobs:                4,
 				featureReportSize:    32,
 				firmwareOffset:       6,
@@ -402,16 +402,16 @@ func (d *Device) sendTouchEventsToChannel(inputBuffer []byte, kch chan Key) {
 	if touchUsage == INPUT_TOUCH_USAGE_SHORT {
 		keyIndex = d.Columns*d.Rows + 3*d.Knobs + segment
 	} else if touchUsage == INPUT_TOUCH_USAGE_LONG {
-		keyIndex = d.Columns*d.Rows + 3*d.Knobs + d.ScreenSegmentsAmount + segment
+		keyIndex = d.Columns*d.Rows + 3*d.Knobs + d.ScreenSegments + segment
 	} else if touchUsage == INPUT_TOUCH_USAGE_SWIPE {
 		x2 := binary.LittleEndian.Uint16(inputBuffer[INPUT_POSITION_TOUCH_X2_ID:])
 		startSegment := uint8(math.Floor(float64(x) / 40.0))
 		stopSegment := uint8(math.Floor(float64(x2) / 40.0))
 
 		if startSegment < stopSegment { //left to right
-			keyIndex = d.Columns*d.Rows + 3*d.Knobs + 2*d.ScreenSegmentsAmount
+			keyIndex = d.Columns*d.Rows + 3*d.Knobs + 2*d.ScreenSegments
 		} else if startSegment > stopSegment { //right to left
-			keyIndex = d.Columns*d.Rows + 3*d.Knobs + 2*d.ScreenSegmentsAmount + 1
+			keyIndex = d.Columns*d.Rows + 3*d.Knobs + 2*d.ScreenSegments + 1
 		} else {
 			return
 		}
@@ -481,15 +481,15 @@ func (d *Device) updateLastActionTimeToNow() {
 
 // ScreenSegmentWidth returns the width of a screen segment. Returns 0 if there are no segments.
 func (d *Device) ScreenSegmentWidth() uint {
-	if d.ScreenSegmentsAmount == 0 {
+	if d.ScreenSegments == 0 {
 		return 0
 	}
-	return d.ScreenWidth / uint(d.ScreenSegmentsAmount)
+	return d.ScreenWidth / uint(d.ScreenSegments)
 }
 
 // ScreenSegmentHeight returns the width of a screen segment. Returns 0 if there are no segments.
 func (d *Device) ScreenSegmentHeight() uint {
-	if d.ScreenSegmentsAmount == 0 {
+	if d.ScreenSegments == 0 {
 		return 0
 	}
 	return d.ScreenHeight
@@ -661,7 +661,7 @@ func (d Device) SetImage(index uint8, img image.Image) error {
 
 // SetTouchScreenSegmentImage sets the image of a segment of the Stream Deck Plus touch screen. The provided image
 // needs to be in the correct resolution for the device. The index starts with
-// 0 to Device.ScreenSegmentsAmount-1.
+// 0 to Device.ScreenSegments-1.
 func (d Device) SetTouchScreenSegmentImage(segmentIndex uint8, img image.Image) error {
 	position := image.Point{
 		X: int(uint(segmentIndex) * d.ScreenSegmentWidth()),
