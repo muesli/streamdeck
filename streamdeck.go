@@ -80,11 +80,10 @@ type Device struct {
 	DPI     uint
 	Padding uint
 
-	ScreenWidth         uint
-	ScreenHeight        uint
-	ScreenVerticalDPI   uint
-	ScreenHorizontalDPI uint
-	ScreenSegments      uint8
+	ScreenWidth    uint
+	ScreenHeight   uint
+	ScreenDPI      uint
+	ScreenSegments uint8
 
 	Knobs uint8
 
@@ -245,8 +244,7 @@ func Devices() ([]Device, error) {
 				Padding:              16,
 				ScreenWidth:          800,
 				ScreenHeight:         100,
-				ScreenVerticalDPI:    181, //14mm and 100px
-				ScreenHorizontalDPI:  188, //108mm and 800px
+				ScreenDPI:            184, //108x14mm at 800x100px
 				ScreenSegments:       4,
 				Knobs:                4,
 				featureReportSize:    32,
